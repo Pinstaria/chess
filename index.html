@@ -1,0 +1,2679 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grandmaster Chess Suite & AI Coach</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        slate: {
+                            850: '#161f30',
+                            900: '#0f172a',
+                            950: '#080d1a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --board-light: #ebecd0;
+            --board-dark: #739552;
+            --board-highlight: rgba(255, 255, 51, 0.5);
+        }
+        [data-board-theme="wood"] {
+            --board-light: #f0d9b5;
+            --board-dark: #b58863;
+        }
+        [data-board-theme="ocean"] {
+            --board-light: #dee3e6;
+            --board-dark: #4b7399;
+        }
+        [data-board-theme="midnight"] {
+            --board-light: #cbd5e1;
+            --board-dark: #334155;
+        }
+        [data-board-theme="royal"] {
+            --board-light: #f3e8ff;
+            --board-dark: #6b21a8;
+        }
+
+        body {
+            background-color: #080d1a;
+            color: #f8fafc;
+            overflow-x: hidden;
+        }
+
+        .chess-board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            aspect-ratio: 1 / 1;
+            width: 100%;
+            max-width: 600px;
+            user-select: none;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+        }
+
+        .square {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.12s ease;
+        }
+
+        .square.light { background-color: var(--board-light); color: var(--board-dark); }
+        .square.dark { background-color: var(--board-dark); color: var(--board-light); }
+        .square.selected { background-color: rgba(250, 204, 21, 0.75) !important; }
+        .square.last-move { background-color: rgba(250, 204, 21, 0.45) !important; }
+        .square.in-check { background: radial-gradient(circle, rgba(239,68,68,0.9) 0%, rgba(239,68,68,0.3) 70%, transparent 100%) !important; }
+        .square.hint-square { box-shadow: inset 0 0 0 4px #06b6d4 !important; }
+
+        .legal-dot {
+            width: 28%;
+            height: 28%;
+            border-radius: 9999px;
+            background-color: rgba(0, 0, 0, 0.24);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .legal-capture {
+            position: absolute;
+            inset: 4px;
+            border: 4px solid rgba(0, 0, 0, 0.28);
+            border-radius: 9999px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .coord-rank {
+            position: absolute;
+            top: 3px;
+            left: 5px;
+            font-size: 0.65rem;
+            font-weight: 800;
+            line-height: 1;
+            pointer-events: none;
+            opacity: 0.85;
+        }
+
+        .coord-file {
+            position: absolute;
+            bottom: 3px;
+            right: 5px;
+            font-size: 0.65rem;
+            font-weight: 800;
+            line-height: 1;
+            pointer-events: none;
+            opacity: 0.85;
+        }
+
+        .piece-svg {
+            width: 84%;
+            height: 84%;
+            z-index: 5;
+            transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+            filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.35));
+            pointer-events: none;
+        }
+
+        .square:hover .piece-svg {
+            transform: scale(1.06);
+        }
+
+        .move-badge-on-board {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            width: 22px;
+            height: 22px;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            font-weight: 900;
+            z-index: 25;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.45);
+            border: 2px solid #fff;
+            animation: popIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-emerald-500 selection:text-white" data-board-theme="classic">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+            <!-- Brand -->
+            <div class="flex items-center gap-3 cursor-pointer" onclick="switchTab('dashboard')">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                    <i class="fa-solid fa-chess-knight text-slate-950 text-xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">ApexChess</span>
+                        <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">AI Coach 3.5</span>
+                    </div>
+                    <p class="text-xs text-slate-400 hidden sm:block">Stockfish 10-Tier Move Grading & 50 Bots</p>
+                </div>
+            </div>
+
+            <!-- Navigation Links -->
+            <nav class="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800 overflow-x-auto max-w-full">
+                <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-2 bg-emerald-500 text-slate-950">
+                    <i class="fa-solid fa-chart-pie"></i> <span>Dashboard</span>
+                </button>
+                <button onclick="switchTab('play')" id="nav-play" class="nav-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-2 text-slate-300 hover:text-white">
+                    <i class="fa-solid fa-chess-board"></i> <span>Play & Coach</span>
+                </button>
+                <button onclick="switchTab('bots')" id="nav-bots" class="nav-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-2 text-slate-300 hover:text-white">
+                    <i class="fa-solid fa-robot"></i> <span>50 Bots</span>
+                </button>
+                <button onclick="switchTab('calibration')" id="nav-calibration" class="nav-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-2 text-slate-300 hover:text-white">
+                    <i class="fa-solid fa-compass-drafting"></i> <span>1-Game Calibration</span>
+                </button>
+                <button onclick="switchTab('puzzles')" id="nav-puzzles" class="nav-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-2 text-slate-300 hover:text-white">
+                    <i class="fa-solid fa-puzzle-piece"></i> <span>Puzzles</span>
+                </button>
+                <button onclick="switchTab('review')" id="nav-review" class="nav-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-2 text-slate-300 hover:text-white">
+                    <i class="fa-solid fa-magnifying-glass-chart"></i> <span>Game Review</span>
+                </button>
+            </nav>
+
+            <!-- User Quick Pill & Controls -->
+            <div class="hidden lg:flex items-center gap-3">
+                <div class="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                    <span id="engine-status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span id="engine-status-text" class="text-xs font-mono text-slate-300">SF-Engine Ready</span>
+                </div>
+                <div class="flex items-center gap-2 bg-slate-800/70 px-3 py-1.5 rounded-xl border border-slate-700">
+                    <i class="fa-solid fa-trophy text-amber-400 text-xs"></i>
+                    <span class="text-xs text-slate-300">Elo:</span>
+                    <span id="header-user-elo" class="text-sm font-bold font-mono text-white">1200</span>
+                </div>
+                <button onclick="toggleSound()" id="sound-btn" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300 transition" title="Toggle Sound Effects">
+                    <i class="fa-solid fa-volume-high"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
+
+        <!-- ==================== TAB 1: DASHBOARD ==================== -->
+        <section id="tab-dashboard" class="space-y-6">
+            <!-- Hero Banner -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/60 border border-slate-800 p-6 flex flex-col justify-between relative overflow-hidden">
+                    <div class="absolute -right-8 -bottom-8 opacity-10 pointer-events-none">
+                        <i class="fa-solid fa-chess-king text-[180px] text-emerald-400"></i>
+                    </div>
+                    <div class="space-y-2 z-10">
+                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
+                            <i class="fa-solid fa-bolt"></i> Personalized Chess Training Hub
+                        </div>
+                        <h1 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Master Every Move with 10-Tier AI Coaching</h1>
+                        <p class="text-slate-400 text-sm max-w-xl">
+                            Play 50 distinct personalities from 250 to 2850 Elo, calibrate your true rating in a single adaptive game, or get every move graded from <span class="text-cyan-400 font-semibold">Brilliant (!!)</span> to <span class="text-rose-400 font-semibold">Blunder (??)</span>.
+                        </p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-3 pt-6 z-10">
+                        <button onclick="startQuickBotMatch()" class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/20 transition flex items-center gap-2">
+                            <i class="fa-solid fa-play"></i> Quick Match (Matched Bot)
+                        </button>
+                        <button onclick="startCalibrationGame()" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/20 transition flex items-center gap-2">
+                            <i class="fa-solid fa-compass-drafting"></i> Start 1-Game Elo Calibration
+                        </button>
+                        <button onclick="switchTab('puzzles')" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-sm border border-slate-700 transition flex items-center gap-2">
+                            <i class="fa-solid fa-puzzle-piece text-purple-400"></i> Solve Tactical Puzzles
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Player Rating & Calibration Status Card -->
+                <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6 flex flex-col justify-between">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Official Player Profile</span>
+                            <h2 class="text-xl font-bold text-white mt-0.5">Grandmaster Challenger</h2>
+                        </div>
+                        <span id="dash-calibration-badge" class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                            Uncalibrated
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 my-4">
+                        <div class="bg-slate-950/90 p-3.5 rounded-xl border border-slate-800/80">
+                            <div class="text-xs text-slate-400 flex items-center gap-1.5">
+                                <i class="fa-solid fa-trophy text-amber-400"></i> Classical / Bot Elo
+                            </div>
+                            <div id="dash-elo-val" class="text-2xl font-black font-mono text-white mt-1">1200</div>
+                            <div id="dash-elo-rank" class="text-[11px] text-emerald-400 font-medium">Club Competitor</div>
+                        </div>
+                        <div class="bg-slate-950/90 p-3.5 rounded-xl border border-slate-800/80">
+                            <div class="text-xs text-slate-400 flex items-center gap-1.5">
+                                <i class="fa-solid fa-puzzle-piece text-purple-400"></i> Puzzle Rating
+                            </div>
+                            <div id="dash-puzzle-val" class="text-2xl font-black font-mono text-white mt-1">1350</div>
+                            <div id="dash-puzzle-streak" class="text-[11px] text-purple-400 font-medium">Streak: 0</div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2 text-center bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/60">
+                        <div>
+                            <div class="text-[11px] text-slate-400">Games</div>
+                            <div id="dash-games-count" class="font-bold font-mono text-sm text-white">0</div>
+                        </div>
+                        <div>
+                            <div class="text-[11px] text-slate-400">Avg Accuracy</div>
+                            <div id="dash-avg-acc" class="font-bold font-mono text-sm text-emerald-400">84.2%</div>
+                        </div>
+                        <div>
+                            <div class="text-[11px] text-slate-400">Bots Defeated</div>
+                            <div id="dash-bots-beaten" class="font-bold font-mono text-sm text-amber-400">0 / 50</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lifetime Move Classification Breakdown & Featured Bots -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Lifetime Move Quality Breakdown -->
+                <div class="lg:col-span-2 rounded-2xl bg-slate-900 border border-slate-800 p-6">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                        <div>
+                            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                                <i class="fa-solid fa-graduation-cap text-emerald-400"></i> Lifetime Coach Move Classification
+                            </h3>
+                            <p class="text-xs text-slate-400">Aggregate distribution of all graded moves across your matches</p>
+                        </div>
+                        <div class="flex items-center gap-2 text-xs">
+                            <span class="text-slate-400">Coach Strictness:</span>
+                            <select id="dash-strictness-select" onchange="setCoachStrictness(this.value)" class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-white font-semibold">
+                                <option value="easy">Easy (Encouraging)</option>
+                                <option value="normal" selected>Normal (Chess.com Standard)</option>
+                                <option value="hard">Hard (Grandmaster Strict)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="dash-classifications-grid" class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                        <!-- Dynamically populated 10 move grades -->
+                    </div>
+                </div>
+
+                <!-- Recent Games & Quick Bot Ladder -->
+                <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                                <i class="fa-solid fa-clock-rotate-left text-cyan-400"></i> Recent Matches
+                            </h3>
+                            <button onclick="switchTab('review')" class="text-xs text-emerald-400 hover:underline font-semibold">Analyze Last</button>
+                        </div>
+                        <div id="dash-recent-games" class="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                            <!-- Dynamically populated recent matches -->
+                        </div>
+                    </div>
+                    <div class="pt-4 mt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                        <span>Board Theme:</span>
+                        <div class="flex gap-1.5">
+                            <button onclick="setBoardTheme('classic')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white">Classic</button>
+                            <button onclick="setBoardTheme('wood')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white">Wood</button>
+                            <button onclick="setBoardTheme('ocean')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white">Ocean</button>
+                            <button onclick="setBoardTheme('midnight')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white">Midnight</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 2: PLAY & LIVE COACH ==================== -->
+        <section id="tab-play" class="hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                <!-- Left Column: Eval Bar + Board + Player Bars (7 cols) -->
+                <div class="lg:col-span-7 flex flex-col items-center">
+                    <!-- Opponent Info Bar -->
+                    <div class="w-full max-w-[640px] bg-slate-900 border border-slate-800 rounded-t-2xl p-3 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div id="opponent-avatar" class="w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-2xl shadow-inner">
+                                🤖
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <span id="opponent-name" class="font-bold text-white text-sm sm:text-base">Viktor the Tactician</span>
+                                    <span id="opponent-elo-badge" class="px-2 py-0.5 text-xs font-mono font-bold rounded bg-slate-800 text-emerald-400 border border-slate-700">1250</span>
+                                    <span id="opponent-style-badge" class="hidden sm:inline-block px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold rounded bg-purple-500/15 text-purple-300">Aggressive</span>
+                                </div>
+                                <p id="opponent-chat-bubble" class="text-xs text-slate-400 italic line-clamp-1">"Let's see how you handle sharp center play!"</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div id="captured-by-opponent" class="text-xs font-mono text-slate-300 flex items-center gap-0.5"></div>
+                        </div>
+                    </div>
+
+                    <!-- Board + Vertical Eval Bar Container -->
+                    <div class="w-full max-w-[640px] bg-slate-950 p-2 sm:p-3 border-x border-slate-800 flex items-stretch gap-2 sm:gap-3">
+                        <!-- Vertical Evaluation Bar -->
+                        <div class="w-6 sm:w-7 bg-slate-800 rounded-lg overflow-hidden flex flex-col relative border border-slate-700 select-none shrink-0">
+                            <div id="eval-bar-black" class="bg-slate-900 w-full transition-all duration-300" style="height: 50%;"></div>
+                            <div id="eval-bar-white" class="bg-slate-100 w-full flex-1 transition-all duration-300"></div>
+                            <span id="eval-bar-text" class="absolute inset-x-0 top-1.5 text-center text-[10px] font-mono font-extrabold text-slate-300 mix-blend-difference">+0.0</span>
+                        </div>
+
+                        <!-- Interactive Chessboard -->
+                        <div class="flex-1 flex justify-center items-center relative">
+                            <div id="main-chessboard" class="chess-board"></div>
+
+                            <!-- Promotion Modal Overlay -->
+                            <div id="promotion-modal" class="hidden absolute inset-0 bg-slate-950/85 backdrop-blur-sm z-30 flex items-center justify-center p-4">
+                                <div class="bg-slate-900 border border-slate-700 rounded-2xl p-5 text-center max-w-xs w-full shadow-2xl">
+                                    <h4 class="font-bold text-white text-sm mb-3">Choose Promotion Piece</h4>
+                                    <div class="grid grid-cols-4 gap-2">
+                                        <button onclick="completePromotion('q')" class="p-3 rounded-xl bg-slate-800 hover:bg-emerald-500/20 border border-slate-700 hover:border-emerald-500 transition flex flex-col items-center gap-1">
+                                            <i class="fa-solid fa-chess-queen text-2xl text-amber-400"></i>
+                                            <span class="text-[10px] font-bold">Queen</span>
+                                        </button>
+                                        <button onclick="completePromotion('r')" class="p-3 rounded-xl bg-slate-800 hover:bg-emerald-500/20 border border-slate-700 hover:border-emerald-500 transition flex flex-col items-center gap-1">
+                                            <i class="fa-solid fa-chess-rook text-2xl text-slate-200"></i>
+                                            <span class="text-[10px] font-bold">Rook</span>
+                                        </button>
+                                        <button onclick="completePromotion('b')" class="p-3 rounded-xl bg-slate-800 hover:bg-emerald-500/20 border border-slate-700 hover:border-emerald-500 transition flex flex-col items-center gap-1">
+                                            <i class="fa-solid fa-chess-bishop text-2xl text-emerald-400"></i>
+                                            <span class="text-[10px] font-bold">Bishop</span>
+                                        </button>
+                                        <button onclick="completePromotion('n')" class="p-3 rounded-xl bg-slate-800 hover:bg-emerald-500/20 border border-slate-700 hover:border-emerald-500 transition flex flex-col items-center gap-1">
+                                            <i class="fa-solid fa-chess-knight text-2xl text-cyan-400"></i>
+                                            <span class="text-[10px] font-bold">Knight</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Player Info Bar -->
+                    <div class="w-full max-w-[640px] bg-slate-900 border border-slate-800 rounded-b-2xl p-3 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold">
+                                YOU
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-white text-sm">Player</span>
+                                    <span id="play-user-elo" class="px-2 py-0.5 text-xs font-mono font-bold rounded bg-slate-800 text-amber-400 border border-slate-700">1200</span>
+                                    <span id="calibration-live-pill" class="hidden px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-amber-500 text-slate-950 animate-pulse">Calibration Mode</span>
+                                </div>
+                                <div id="opening-name-display" class="text-xs text-emerald-400 font-medium">Starting Position</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="requestCoachHint()" class="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-lightbulb"></i> Hint
+                            </button>
+                            <button onclick="flipBoard()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition" title="Flip Board">
+                                <i class="fa-solid fa-retweet"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Live AI Coach Feedback, Strictness, & Move History (5 cols) -->
+                <div class="lg:col-span-5 space-y-4">
+                    <!-- Coach Real-Time Evaluation Panel -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-slate-950 font-black">
+                                    <i class="fa-solid fa-user-graduate"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-white text-sm">Grandmaster AI Coach</h3>
+                                    <p class="text-[11px] text-slate-400">Real-Time 10-Grade Move Evaluator</p>
+                                </div>
+                            </div>
+
+                            <!-- Grading Strictness Selector -->
+                            <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                                <button onclick="setCoachStrictness('easy')" id="strict-easy" class="strict-btn px-2.5 py-1 rounded-lg font-semibold text-slate-400">Easy</button>
+                                <button onclick="setCoachStrictness('normal')" id="strict-normal" class="strict-btn px-2.5 py-1 rounded-lg font-semibold bg-emerald-500 text-slate-950">Normal</button>
+                                <button onclick="setCoachStrictness('hard')" id="strict-hard" class="strict-btn px-2.5 py-1 rounded-lg font-semibold text-slate-400">Hard</button>
+                            </div>
+                        </div>
+
+                        <!-- Last Move Classification Spotlight -->
+                        <div id="coach-card" class="bg-slate-950/90 border border-slate-800 rounded-xl p-4 transition-all">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-3">
+                                    <div id="coach-badge-icon" class="w-11 h-11 rounded-xl bg-slate-800 flex items-center justify-center text-lg font-black text-emerald-400 border border-slate-700">
+                                        <i class="fa-solid fa-book"></i>
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <span id="coach-move-san" class="font-mono font-bold text-white text-base">Ready to Play</span>
+                                            <span id="coach-grade-pill" class="px-2 py-0.5 rounded-full text-xs font-extrabold bg-slate-800 text-slate-300">Awaiting Move</span>
+                                        </div>
+                                        <p id="coach-explanation" class="text-xs text-slate-300 mt-1">
+                                            Make a move on the board! I'll grade every move as Brilliant, Great, Best, Excellent, Good, Book, Ok, Inaccuracy, Mistake, or Blunder.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="coach-best-line" class="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                                <span>Engine Best: <strong id="coach-best-move-text" class="text-emerald-400">e4 / d4</strong></span>
+                                <span>CP Delta: <strong id="coach-cp-loss" class="text-slate-200">0.00</strong></span>
+                            </div>
+                        </div>
+
+                        <!-- Live Move Classification Tallies in Current Game -->
+                        <div>
+                            <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+                                <span>Current Match Move Grades (You)</span>
+                                <span id="live-accuracy-display" class="font-mono font-bold text-emerald-400">Accuracy: 100.0%</span>
+                            </div>
+                            <div id="live-grade-counters" class="grid grid-cols-5 gap-1.5 text-center">
+                                <!-- Populated via JS -->
+                            </div>
+                        </div>
+
+                        <!-- Move List & Game Controls -->
+                        <div>
+                            <div class="text-xs font-semibold text-slate-400 mb-1.5 flex items-center justify-between">
+                                <span>Move History & Grades</span>
+                                <button onclick="exportCurrentPGN()" class="text-emerald-400 hover:underline text-[11px] flex items-center gap-1">
+                                    <i class="fa-solid fa-copy"></i> Copy PGN
+                                </button>
+                            </div>
+                            <div id="move-history-list" class="h-44 overflow-y-auto bg-slate-950 rounded-xl border border-slate-800 p-2.5 font-mono text-xs space-y-1">
+                                <div class="text-slate-500 text-center py-12">No moves played yet.</div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                            <button onclick="openNewGameModal()" class="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-plus"></i> New Game
+                            </button>
+                            <button onclick="undoLastMovePair()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-rotate-left"></i> Takeback
+                            </button>
+                            <button onclick="resignOrFinishGame()" class="px-3 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 font-semibold text-xs transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-flag"></i> Resign
+                            </button>
+                            <button onclick="finishAndReviewGame()" class="px-3 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-chart-line"></i> Review
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 3: 50 UNIQUE BOTS ==================== -->
+        <section id="tab-bots" class="hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-2xl font-extrabold text-white flex items-center gap-2.5">
+                        <i class="fa-solid fa-robot text-emerald-400"></i> 50 Unique Chess Personalities
+                    </h2>
+                    <p class="text-sm text-slate-400 mt-1">
+                        Every bot has a custom Elo (250–2850), opening repertoire, blunder rate, and tactical aggression profile.
+                    </p>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                    <button onclick="filterBots('all')" class="bot-filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-500 text-slate-950" data-tier="all">All (50)</button>
+                    <button onclick="filterBots('Beginner')" class="bot-filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-slate-300" data-tier="Beginner">Beginner (10)</button>
+                    <button onclick="filterBots('Casual')" class="bot-filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-slate-300" data-tier="Casual">Casual (10)</button>
+                    <button onclick="filterBots('Club')" class="bot-filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-slate-300" data-tier="Club">Club (10)</button>
+                    <button onclick="filterBots('Master')" class="bot-filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-slate-300" data-tier="Master">Master (10)</button>
+                    <button onclick="filterBots('Grandmaster')" class="bot-filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-slate-300" data-tier="Grandmaster">GM & Apex (10)</button>
+                </div>
+            </div>
+
+            <!-- 50 Bots Grid -->
+            <div id="bots-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <!-- Populated dynamically with all 50 unique bots -->
+            </div>
+        </section>
+
+        <!-- ==================== TAB 4: 1-GAME CALIBRATION ==================== -->
+        <section id="tab-calibration" class="hidden space-y-6">
+            <div class="bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/40 border border-amber-500/30 rounded-2xl p-6 sm:p-8">
+                <div class="max-w-3xl space-y-4">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold uppercase tracking-wider">
+                        <i class="fa-solid fa-compass-drafting"></i> Single-Game Adaptive Elo Assessment
+                    </div>
+                    <h2 class="text-2xl sm:text-3xl font-black text-white">Determine Your True Chess Rating in One Game</h2>
+                    <p class="text-slate-300 text-sm leading-relaxed">
+                        Unlike traditional rating systems that take 20+ games, our <strong>Adaptive Calibration Bot</strong> dynamically scales its strength after every single move you play. By combining your <strong>Average Centipawn Loss (ACPL)</strong>, tactical spot rate under pressure, and move quality grades, we compute your exact Elo rating between <strong>300 and 2700</strong> in one match.
+                    </p>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                        <div class="bg-slate-950/80 border border-slate-800 p-4 rounded-xl">
+                            <div class="text-amber-400 font-bold text-sm flex items-center gap-2">
+                                <i class="fa-solid fa-sliders"></i> 1. Dynamic Resistance
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">Starts at 1200 Elo. Plays stronger moves as you play Best/Great moves, or softens if you struggle.</p>
+                        </div>
+                        <div class="bg-slate-950/80 border border-slate-800 p-4 rounded-xl">
+                            <div class="text-cyan-400 font-bold text-sm flex items-center gap-2">
+                                <i class="fa-solid fa-microchip"></i> 2. Precision Telemetry
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">Measures centipawn loss per ply, book knowledge in the first 8 moves, and tactical accuracy.</p>
+                        </div>
+                        <div class="bg-slate-950/80 border border-slate-800 p-4 rounded-xl">
+                            <div class="text-emerald-400 font-bold text-sm flex items-center gap-2">
+                                <i class="fa-solid fa-award"></i> 3. Instant Elo Certificate
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">Complete at least 10 moves (or finish the game) to lock in your calibrated Elo and bot recommendations.</p>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 flex flex-wrap items-center gap-4">
+                        <button onclick="startCalibrationGame()" class="px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm shadow-lg shadow-amber-500/20 transition flex items-center gap-2">
+                            <i class="fa-solid fa-bolt"></i> Launch 1-Game Calibration Match Now
+                        </button>
+                        <div class="text-xs text-slate-400">
+                            Last Calibrated Elo: <strong id="calib-tab-last-elo" class="text-white font-mono">Not yet calibrated</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 5: TACTICAL PUZZLES ==================== -->
+        <section id="tab-puzzles" class="hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                <div class="lg:col-span-7 flex flex-col items-center">
+                    <div class="w-full max-w-[580px] bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2.5">
+                                <span class="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 font-bold">
+                                    <i class="fa-solid fa-puzzle-piece"></i>
+                                </span>
+                                <div>
+                                    <h3 id="puzzle-title" class="font-bold text-white text-sm">Tactical Puzzle #101</h3>
+                                    <p id="puzzle-theme-badge" class="text-xs text-purple-400 font-medium">Theme: Royal Fork & Mate Threat</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-[11px] text-slate-400 block">Puzzle Rating</span>
+                                <span id="puzzle-difficulty-elo" class="font-mono font-bold text-sm text-amber-400">1420</span>
+                            </div>
+                        </div>
+
+                        <div id="puzzle-chessboard" class="chess-board mx-auto"></div>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-5 space-y-4">
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <span class="text-xs uppercase tracking-wider text-slate-400 font-bold">Your Puzzle Rating</span>
+                                <div id="puzzle-user-rating" class="text-3xl font-black font-mono text-white mt-0.5">1350</div>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-xs uppercase tracking-wider text-slate-400 font-bold">Win Streak</span>
+                                <div id="puzzle-streak-counter" class="text-2xl font-black font-mono text-emerald-400 mt-0.5">🔥 0</div>
+                            </div>
+                        </div>
+
+                        <div id="puzzle-prompt-box" class="p-4 rounded-xl bg-slate-950 border border-slate-800 text-sm font-medium text-slate-200 flex items-center gap-3">
+                            <i class="fa-solid fa-circle-play text-emerald-400 text-lg"></i>
+                            <span id="puzzle-status-text">Find the best tactical continuation!</span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2.5">
+                            <button onclick="showPuzzleHint()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs border border-slate-700 transition flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-lightbulb"></i> Hint Square
+                            </button>
+                            <button onclick="revealPuzzleSolution()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs border border-slate-700 transition flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-eye"></i> Show Solution
+                            </button>
+                        </div>
+
+                        <button onclick="loadNextPuzzle(true)" class="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-forward"></i> Generate Next Tactical Puzzle
+                        </button>
+
+                        <div class="pt-3 border-t border-slate-800 text-xs text-slate-400 space-y-1">
+                            <div class="font-bold text-slate-300">Auto-Generator Engine</div>
+                            <p>Combines curated tactical motifs with procedural FEN mirrored/transposed puzzles verified by our tactical evaluator.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 6: GAME REVIEW & POST-GAME ANALYSIS ==================== -->
+        <section id="tab-review" class="hidden space-y-6">
+            <!-- Top Summary Header -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+                    <div>
+                        <div class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-400">
+                            <i class="fa-solid fa-magnifying-glass-chart"></i> Deep Coach Post-Game Review
+                        </div>
+                        <h2 id="review-match-title" class="text-2xl font-black text-white mt-0.5">Match Analysis Report</h2>
+                        <p id="review-match-subtitle" class="text-xs text-slate-400">Select any move below or step through the game to inspect each classification</p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div class="flex items-center gap-2 bg-slate-950 px-3 py-2 rounded-xl border border-slate-800 text-xs">
+                            <span class="text-slate-400">Re-Grade Strictness:</span>
+                            <select id="review-strictness-select" onchange="regradeCurrentReview(this.value)" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white font-bold">
+                                <option value="easy">Easy (Lenient)</option>
+                                <option value="normal" selected>Normal (Chess.com)</option>
+                                <option value="hard">Hard (Grandmaster)</option>
+                            </select>
+                        </div>
+                        <button onclick="openPGNImportModal()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-import"></i> Import PGN to Analyze
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Accuracy Comparison + Evaluation Graph -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-5 items-center">
+                    <!-- Player vs Opponent Accuracy Cards -->
+                    <div class="lg:col-span-5 grid grid-cols-2 gap-4">
+                        <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 text-center">
+                            <span class="text-xs font-bold text-slate-400 uppercase">Your Accuracy</span>
+                            <div id="review-user-acc" class="text-3xl font-black font-mono text-emerald-400 my-1">88.4%</div>
+                            <span id="review-user-perf-elo" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-300">Est. Performance: 1450</span>
+                        </div>
+                        <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 text-center">
+                            <span id="review-opp-label" class="text-xs font-bold text-slate-400 uppercase">Bot Accuracy</span>
+                            <div id="review-opp-acc" class="text-3xl font-black font-mono text-cyan-400 my-1">84.1%</div>
+                            <span id="review-opp-perf-elo" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-cyan-500/15 text-cyan-300">Bot Rating: 1250</span>
+                        </div>
+                    </div>
+
+                    <!-- Evaluation Graph Over Time -->
+                    <div class="lg:col-span-7 bg-slate-950 border border-slate-800 rounded-xl p-3">
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1 px-1">
+                            <span>Advantage Graph Over Moves (Click to jump to move)</span>
+                            <span class="font-mono">White (+) / Black (-)</span>
+                        </div>
+                        <canvas id="review-eval-canvas" class="w-full h-28 rounded-lg cursor-pointer"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Move Counts & Interactive Replay Board -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                <!-- Replay Board (6 cols) -->
+                <div class="lg:col-span-6 flex flex-col items-center bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                    <div id="review-chessboard" class="chess-board"></div>
+                    <!-- Replay Controls -->
+                    <div class="flex items-center justify-center gap-2 mt-4 w-full">
+                        <button onclick="reviewStepTo(0)" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold"><i class="fa-solid fa-backward-fast"></i></button>
+                        <button onclick="reviewStepDelta(-1)" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold"><i class="fa-solid fa-backward-step"></i> Prev</button>
+                        <span id="review-ply-indicator" class="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs text-slate-300">Move 0 / 0</span>
+                        <button onclick="reviewStepDelta(1)" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold">Next <i class="fa-solid fa-forward-step"></i></button>
+                        <button onclick="reviewStepTo(9999)" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold"><i class="fa-solid fa-forward-fast"></i></button>
+                    </div>
+                </div>
+
+                <!-- Full 10-Grade Breakdown Table & Move-by-Move Inspector (6 cols) -->
+                <div class="lg:col-span-6 space-y-4">
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                        <h3 class="font-bold text-white text-base mb-3 flex items-center justify-between">
+                            <span>How Much of Each Move You Made</span>
+                            <span class="text-xs font-normal text-slate-400">10-Tier Classification Count</span>
+                        </h3>
+                        <div id="review-breakdown-rows" class="space-y-2">
+                            <!-- Dynamically populated rows for Brilliant, Great, Best, Excellent, Good, Book, Ok, Inaccuracy, Mistake, Blunder -->
+                        </div>
+                    </div>
+
+                    <!-- Selected Move Coach Commentary -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                        <div class="text-xs uppercase font-bold text-slate-400 mb-2">Move-by-Move Coach Log</div>
+                        <div id="review-move-log" class="max-h-52 overflow-y-auto space-y-1.5 pr-1 font-mono text-xs">
+                            <!-- Populated via JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- New Game / Bot Selection Modal -->
+    <div id="new-game-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-extrabold text-white">Configure Match</h3>
+                <button onclick="closeModal('new-game-modal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs font-semibold text-slate-400 block mb-1">Select Opponent Bot (50 Available)</label>
+                    <select id="modal-bot-select" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white font-semibold"></select>
+                </div>
+                <div>
+                    <label class="text-xs font-semibold text-slate-400 block mb-1">Play As Side</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="selectModalColor('w')" id="color-btn-w" class="py-2 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs">White</button>
+                        <button onclick="selectModalColor('random')" id="color-btn-random" class="py-2 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs">Random</button>
+                        <button onclick="selectModalColor('b')" id="color-btn-b" class="py-2 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs">Black</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-xs font-semibold text-slate-400 block mb-1">Coach Grading Strictness</label>
+                    <select id="modal-strictness-select" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-semibold">
+                        <option value="easy">Easy (Generous Brilliant/Best grades)</option>
+                        <option value="normal" selected>Normal (Standard Chess.com Review)</option>
+                        <option value="hard">Hard (Strict Grandmaster thresholds)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeModal('new-game-modal')" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Cancel</button>
+                <button onclick="confirmStartConfiguredGame()" class="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black">Start Game</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Calibration Result & Game Over Modal -->
+    <div id="game-over-modal" class="hidden fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 text-center space-y-4 shadow-2xl">
+            <div id="gameover-icon" class="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-3xl flex items-center justify-center mx-auto">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <div>
+                <span id="gameover-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase bg-emerald-500/15 text-emerald-300">Match Complete</span>
+                <h3 id="gameover-title" class="text-2xl font-black text-white mt-1">Victory by Checkmate!</h3>
+                <p id="gameover-subtitle" class="text-xs text-slate-400 mt-1">Your coach has prepared a full breakdown of your moves.</p>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                <div>
+                    <span class="text-[11px] text-slate-400 block">New Rating</span>
+                    <span id="gameover-elo" class="text-lg font-black font-mono text-amber-400">1245</span>
+                </div>
+                <div>
+                    <span class="text-[11px] text-slate-400 block">Accuracy</span>
+                    <span id="gameover-acc" class="text-lg font-black font-mono text-emerald-400">89.2%</span>
+                </div>
+                <div>
+                    <span class="text-[11px] text-slate-400 block">Best / Brilliant</span>
+                    <span id="gameover-highlights" class="text-lg font-black font-mono text-cyan-400">6</span>
+                </div>
+            </div>
+
+            <div class="flex gap-2.5">
+                <button onclick="closeModal('game-over-modal'); switchTab('review');" class="flex-1 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition">
+                    <i class="fa-solid fa-magnifying-glass-chart mr-1"></i> Open Full Game Review
+                </button>
+                <button onclick="closeModal('game-over-modal'); openNewGameModal();" class="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition">
+                    Rematch
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PGN Import Modal -->
+    <div id="pgn-import-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-bold text-white">Import PGN for Coach Analysis</h3>
+                <button onclick="closeModal('pgn-import-modal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <textarea id="pgn-textarea" rows="5" placeholder="1. e4 e5 2. Nf3 Nc6 3. Bb5 a6..." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs font-mono text-white"></textarea>
+            <div class="flex justify-end gap-2">
+                <button onclick="closeModal('pgn-import-modal')" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Cancel</button>
+                <button onclick="analyzeImportedPGN()" class="px-5 py-2 rounded-xl bg-emerald-500 text-slate-950 text-xs font-black">Run 10-Grade Analysis</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast-box" class="fixed bottom-5 right-5 z-50 hidden bg-slate-900 border border-emerald-500/50 text-white px-4 py-3 rounded-xl shadow-2xl text-xs font-semibold flex items-center gap-2.5">
+        <i class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span id="toast-message">Action completed</span>
+    </div>
+
+    <script>
+        /* ============================================================================
+         * 1. HIGH-CONTRAST SVG CHESS PIECES & AUDIO SYNTHESIZER
+         * ============================================================================ */
+        const PIECE_SVGS = {
+            wp: `<svg viewBox="0 0 45 45" class="piece-svg"><path d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z" fill="#fff" stroke="#1e293b" stroke-width="2" stroke-linecap="round"/></svg>`,
+            wn: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="none" fill-rule="evenodd" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 25,32.5 23,18" fill="#fff"/><path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,9.506 13.5,8.5 13.5,7.5 C 14.5,6.5 16.5,10 16.5,10 L 18.5,10 C 18.5,10 19.28,8.008 21,7 C 22,7 22,10 22,10" fill="#fff"/><circle cx="15.5" cy="14.5" r="1" fill="#1e293b"/></g></svg>`,
+            wb: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="none" fill-rule="evenodd" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g fill="#fff"><path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.35.49-2.32.47-3-.5 1.35-1.46 3-2 3-2z"/><path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g><path d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5"/></g></svg>`,
+            wr: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="#fff" fill-rule="evenodd" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 39h27v-3H9v3zM12 36v-4h21v4H12zM11 14V9h4v2h5V9h5v2h5V9h4v5"/><path d="M34 14l-3 3H14l-3-3"/><path d="M31 17v12.5H14V17"/><path d="M31 29.5l1.5 2.5h-20l1.5-2.5"/><path d="M11 14h23"/></g></svg>`,
+            wq: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="#fff" fill-rule="evenodd" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM24.5 7.5a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM41 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM16 8.5a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM33 9a2 2 0 1 1-4 0 2 2 0 1 1 4 0z"/><path d="M9 26c8.5-1.5 21-1.5 27 0l2-12-7 11V11l-5.5 13.5-3-15-3 15-5.5-14V25L7 14l2 12z"/><path d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 1.5-1 0-2.5 0 0 .5-1.5-1-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z"/></g></svg>`,
+            wk: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="none" fill-rule="evenodd" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.5 11.63V6M20 8h5"/><path d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" fill="#fff"/><path d="M11.5 37c5.5 3.5 15.5 3.5 21 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V27v-3.5c-3.5-7.5-13-10.5-16-4-3 6 5 10 5 10V37z" fill="#fff"/><path d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0"/></g></svg>`,
+            bp: `<svg viewBox="0 0 45 45" class="piece-svg"><path d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z" fill="#1e293b" stroke="#f8fafc" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+            bn: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="none" fill-rule="evenodd" stroke="#f8fafc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 25,32.5 23,18" fill="#1e293b"/><path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,9.506 13.5,8.5 13.5,7.5 C 14.5,6.5 16.5,10 16.5,10 L 18.5,10 C 18.5,10 19.28,8.008 21,7 C 22,7 22,10 22,10" fill="#1e293b"/><circle cx="15.5" cy="14.5" r="1" fill="#f8fafc"/></g></svg>`,
+            bb: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="none" fill-rule="evenodd" stroke="#f8fafc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><g fill="#1e293b"><path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.35.49-2.32.47-3-.5 1.35-1.46 3-2 3-2z"/><path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g><path d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5"/></g></svg>`,
+            br: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="#1e293b" fill-rule="evenodd" stroke="#f8fafc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 39h27v-3H9v3zM12 36v-4h21v4H12zM11 14V9h4v2h5V9h5v2h5V9h4v5"/><path d="M34 14l-3 3H14l-3-3"/><path d="M31 17v12.5H14V17"/><path d="M31 29.5l1.5 2.5h-20l1.5-2.5"/><path d="M11 14h23"/></g></svg>`,
+            bq: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="#1e293b" fill-rule="evenodd" stroke="#f8fafc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM24.5 7.5a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM41 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM16 8.5a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM33 9a2 2 0 1 1-4 0 2 2 0 1 1 4 0z"/><path d="M9 26c8.5-1.5 21-1.5 27 0l2-12-7 11V11l-5.5 13.5-3-15-3 15-5.5-14V25L7 14l2 12z"/><path d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 1.5-1 0-2.5 0 0 .5-1.5-1-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z"/></g></svg>`,
+            bk: `<svg viewBox="0 0 45 45" class="piece-svg"><g fill="none" fill-rule="evenodd" stroke="#f8fafc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22.5 11.63V6M20 8h5"/><path d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" fill="#1e293b"/><path d="M11.5 37c5.5 3.5 15.5 3.5 21 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V27v-3.5c-3.5-7.5-13-10.5-16-4-3 6 5 10 5 10V37z" fill="#1e293b"/><path d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0"/></g></svg>`
+        };
+
+        /* ============================================================================
+         * 2. ALL 10 MOVE CLASSIFICATIONS (BRILLIANT TO BLUNDER)
+         * ============================================================================ */
+        const MOVE_GRADES = {
+            brilliant:  { key: 'brilliant',  label: 'Brilliant',  sym: '!!', color: '#06b6d4', bg: 'bg-cyan-500/20',    text: 'text-cyan-300',    border: 'border-cyan-400',    weight: 100 },
+            great:      { key: 'great',      label: 'Great',      sym: '!',  color: '#3b82f6', bg: 'bg-blue-500/20',    text: 'text-blue-300',    border: 'border-blue-400',    weight: 98  },
+            best:       { key: 'best',       label: 'Best',       sym: '★',  color: '#10b981', bg: 'bg-emerald-500/20', text: 'text-emerald-300', border: 'border-emerald-400', weight: 100 },
+            excellent:  { key: 'excellent',  label: 'Excellent',  sym: '👍', color: '#34d399', bg: 'bg-teal-500/20',    text: 'text-teal-300',    border: 'border-teal-400',    weight: 92  },
+            good:       { key: 'good',       label: 'Good',       sym: '✓',  color: '#84cc16', bg: 'bg-lime-500/20',    text: 'text-lime-300',    border: 'border-lime-400',    weight: 82  },
+            book:       { key: 'book',       label: 'Book',       sym: '📖', color: '#d97706', bg: 'bg-amber-600/20',   text: 'text-amber-300',   border: 'border-amber-400',   weight: 96  },
+            ok:         { key: 'ok',         label: 'Ok',         sym: '•',  color: '#94a3b8', bg: 'bg-slate-600/25',   text: 'text-slate-300',   border: 'border-slate-400',   weight: 70  },
+            inaccuracy: { key: 'inaccuracy', label: 'Inaccuracy', sym: '?!', color: '#eab308', bg: 'bg-yellow-500/20',  text: 'text-yellow-300',  border: 'border-yellow-400',  weight: 50  },
+            mistake:    { key: 'mistake',    label: 'Mistake',    sym: '?',  color: '#f97316', bg: 'bg-orange-500/20',  text: 'text-orange-300',  border: 'border-orange-400',  weight: 25  },
+            blunder:    { key: 'blunder',    label: 'Blunder',    sym: '??', color: '#ef4444', bg: 'bg-rose-500/20',    text: 'text-rose-300',    border: 'border-rose-400',    weight: 0   }
+        };
+
+        const GRADE_ORDER = ['brilliant', 'great', 'best', 'excellent', 'good', 'book', 'ok', 'inaccuracy', 'mistake', 'blunder'];
+
+        /* ============================================================================
+         * 3. 50 UNIQUE BOTS DIRECTORY (250 ELO TO 2850 ELO)
+         * ============================================================================ */
+        const BOTS_DATA = [
+            // Tier 1: Beginner (250 - 700)
+            { id: 1,  name: "Pip the Pawn",       elo: 250,  tier: "Beginner", icon: "🐣", style: "Random Mover",      quote: "Wait, knights can jump over things?!" },
+            { id: 2,  name: "Barnaby Bumbles",    elo: 300,  tier: "Beginner", icon: "🐻", style: "Friendly",          quote: "I love pushing flank pawns early!" },
+            { id: 3,  name: "Penny Pincher",      elo: 350,  tier: "Beginner", icon: "🪙", style: "Materialist",       quote: "If I can trade a piece, I will!" },
+            { id: 4,  name: "Sleepy Sloth",       elo: 400,  tier: "Beginner", icon: "🦥", style: "Passive",           quote: "Wake me up when we reach the endgame." },
+            { id: 5,  name: "Rookie Rusty",       elo: 450,  tier: "Beginner", icon: "🤖", style: "Erratic",           quote: "My circuits love moving the Queen on move 2." },
+            { id: 6,  name: "Daisy Daydream",     elo: 500,  tier: "Beginner", icon: "🌼", style: "Carefree",          quote: "Pretty patterns on the board!" },
+            { id: 7,  name: "Captain Blunder",    elo: 550,  tier: "Beginner", icon: "🏴‍☠️", style: "Reckless",          quote: "Full speed ahead! Who needs defense?" },
+            { id: 8,  name: "Milo the Mouse",     elo: 600,  tier: "Beginner", icon: "🐭", style: "Timid",             quote: "I keep all my pieces close to my King." },
+            { id: 9,  name: "Wanda Wanderer",     elo: 650,  tier: "Beginner", icon: "🧭", style: "King Walker",       quote: "My King likes taking a walk in the center." },
+            { id: 10, name: "Toby Scholar",       elo: 700,  tier: "Beginner", icon: "🎒", style: "Tricky",            quote: "Watch out for my four-move checkmate!" },
+
+            // Tier 2: Casual (750 - 1200)
+            { id: 11, name: "Cafe Barista Leo",   elo: 750,  tier: "Casual",   icon: "☕", style: "Balanced",          quote: "Nothing beats espresso and the Italian Game." },
+            { id: 12, name: "Fiona Fork",         elo: 800,  tier: "Casual",   icon: "🍴", style: "Knight Lover",      quote: "My knights are always looking for royal forks." },
+            { id: 13, name: "Sven the Shield",    elo: 850,  tier: "Casual",   icon: "🛡️", style: "Solid",             quote: "London System every day, rain or shine." },
+            { id: 14, name: "Bella Blitz",        elo: 900,  tier: "Casual",   icon: "⚡", style: "Fast Attacker",     quote: "I play fast and attack f7!" },
+            { id: 15, name: "Hector Hedgehog",    elo: 950,  tier: "Casual",   icon: "🦔", style: "Defensive",         quote: "Try breaking through my pawn wall." },
+            { id: 16, name: "pirate Jack",        elo: 1000, tier: "Casual",   icon: "🦜", style: "Gambiteer",         quote: "A pawn sacrificed for open files is a bargain!" },
+            { id: 17, name: "Clara Castle",       elo: 1050, tier: "Casual",   icon: "🏰", style: "Positional",        quote: "Safety first, rooks on open files second." },
+            { id: 18, name: "Dante Dragon",       elo: 1100, tier: "Casual",   icon: "🐉", style: "Sicilian Fan",      quote: "My fianchettoed bishop breathes fire." },
+            { id: 19, name: "Zoe Zugzwang",       elo: 1150, tier: "Casual",   icon: "⏳", style: "Endgame Grinder",   quote: "Every pawn trade brings me closer to victory." },
+            { id: 20, name: "Marco Merchant",     elo: 1200, tier: "Casual",   icon: "⚖️", style: "Counter-Attacker",  quote: "Overextend and I'll collect the tax." },
+
+            // Tier 3: Club (1250 - 1700)
+            { id: 21, name: "Viktor Tactician",   elo: 1250, tier: "Club",     icon: "⚔️", style: "Sharp",             quote: "Let's see how you handle sharp center play!" },
+            { id: 22, name: "Elena French",       elo: 1300, tier: "Club",     icon: "🥖", style: "Counterpuncher",    quote: "Target the d4-e5 pawn chain ruthlessly." },
+            { id: 23, name: "Professor Finch",    elo: 1350, tier: "Club",     icon: "🦉", style: "Bookworm",          quote: "I know 12 moves of theory in the Ruy Lopez." },
+            { id: 24, name: "Samurai Kenji",      elo: 1400, tier: "Club",     icon: "🥷", style: "Precision Blade",   quote: "One pin is all it takes to win." },
+            { id: 25, name: "Olga Outpost",       elo: 1450, tier: "Club",     icon: "🏔️", style: "Strategic",         quote: "A knight on d5 is worth a rook." },
+            { id: 26, name: "Rafael Romantic",    elo: 1500, tier: "Club",     icon: "🌹", style: "King's Gambit",     quote: "Sacrifice the exchange for the initiative!" },
+            { id: 27, name: "Nadia Nimzo",        elo: 1550, tier: "Club",     icon: "🧬", style: "Hypermodern",       quote: "Control the center from afar with pieces." },
+            { id: 28, name: "Marcus Marathon",    elo: 1600, tier: "Club",     icon: "🏃", style: "Stamina",           quote: "Rook endgames are my playground." },
+            { id: 29, name: "Tariq Tornado",      elo: 1650, tier: "Club",     icon: "🌪️", style: "Dynamic",           quote: "Complications favor the sharpest calculator." },
+            { id: 30, name: "Astrid Ice",         elo: 1700, tier: "Club",     icon: "❄️", style: "Cold Blooded",      quote: "I defend accurately and punish impatience." },
+
+            // Tier 4: Master (1750 - 2200)
+            { id: 31, name: "CMJulian Vance",     elo: 1750, tier: "Master",   icon: "🎖️", style: "Universal",         quote: "Candidate Master precision in every phase." },
+            { id: 32, name: "FM Sofia Petrova",   elo: 1800, tier: "Master",   icon: "👑", style: "Aggressive",        quote: "Weak color complexes never escape me." },
+            { id: 33, name: "FM Raj Patel",       elo: 1850, tier: "Master",   icon: "🐅", style: "King's Indian",     quote: "Kingside pawn storm incoming." },
+            { id: 34, name: "FM Lukas Weber",     elo: 1900, tier: "Master",   icon: "📐", style: "Caro-Kann",         quote: "Superior pawn structure wins automatically." },
+            { id: 35, name: "IM Mateo Silva",     elo: 1950, tier: "Master",   icon: "🦅", style: "Tactical Hawk",     quote: "Don't leave any tactical loose ends." },
+            { id: 36, name: "IM Lin Mei",         elo: 2000, tier: "Master",   icon: "🌸", style: "Prophylactic",      quote: "I stop your plans before they even begin." },
+            { id: 37, name: "IM Nikolai Orlov",   elo: 2050, tier: "Master",   icon: "🐻‍❄️", style: "Sveshnikov",        quote: "Dynamic piece activity trumps static weaknesses." },
+            { id: 38, name: "IM Claire Moreau",   elo: 2100, tier: "Master",   icon: "💎", style: "Crystal Clear",     quote: "Converting a 1-pawn advantage with clinical ease." },
+            { id: 39, name: "IM Devon Brooks",    elo: 2150, tier: "Master",   icon: "🔥", style: "Najdorf",           quote: "Poisoned pawns are my specialty." },
+            { id: 40, name: "IM Henrik Lind",     elo: 2200, tier: "Master",   icon: "⚓", style: "Catalan Master",    quote: "Long-term pressure along the long diagonal." },
+
+            // Tier 5: Grandmaster & Apex (2250 - 2850)
+            { id: 41, name: "GM Arpad Horvath",   elo: 2250, tier: "Grandmaster", icon: "🧙‍♂️", style: "Creative GM",     quote: "Welcome to the Grandmaster arena." },
+            { id: 42, name: "GM Elena Volkova",   elo: 2320, tier: "Grandmaster", icon: "🌟", style: "Attacking GM",    quote: "Every move must pose a concrete problem." },
+            { id: 43, name: "GM Hiroshi Sato",    elo: 2400, tier: "Grandmaster", icon: "⛩️", style: "Zen Precision",   quote: "Harmony between pieces is everything." },
+            { id: 44, name: "GM Alejandro Cruz",  elo: 2480, tier: "Grandmaster", icon: "⚡", style: "Super Blitz",     quote: "Deep calculation at blinding speed." },
+            { id: 45, name: "GM Boris Smirnov",   elo: 2550, tier: "Grandmaster", icon: "🏛️", style: "Classical Giant", quote: "Ironclad preparation and endgame mastery." },
+            { id: 46, name: "GM Freja Lindqvist", elo: 2620, tier: "Grandmaster", icon: "🗡️", style: "Valkyrie",        quote: "One inaccuracy is all I need." },
+            { id: 47, name: "Super-GM Levon K.",  elo: 2680, tier: "Grandmaster", icon: "🦁", style: "World Contender", quote: "Find the only move or fall behind." },
+            { id: 48, name: "Super-GM Magnus V.", elo: 2750, tier: "Grandmaster", icon: "🐐", style: "Endgame Goat",    quote: "Squeezing water from stone in equal positions." },
+            { id: 49, name: "Neural Orion-X",     elo: 2800, tier: "Grandmaster", icon: "🌌", style: "Alpha-Hybrid",    quote: "H4 and A4 space-gaining neural sacrifices." },
+            { id: 50, name: "Apex Stockfish Max", elo: 2850, tier: "Grandmaster", icon: "👁️", style: "Maximum Engine",  quote: "Full depth evaluation. Zero mercy." }
+        ];
+
+        /* ============================================================================
+         * 4. OPENING BOOK DICTIONARY & CURATED TACTICAL PUZZLE BANK
+         * ============================================================================ */
+        const OPENING_BOOK = {
+            "e4": "King's Pawn Opening",
+            "e4 e5": "Open Game",
+            "e4 e5 Nf3": "King's Knight Opening",
+            "e4 e5 Nf3 Nc6": "Two Knights / Open Game",
+            "e4 e5 Nf3 Nc6 Bb5": "Ruy Lopez (Spanish Opening)",
+            "e4 e5 Nf3 Nc6 Bc4": "Italian Game",
+            "e4 e5 Nf3 Nc6 Bc4 Bc5": "Giuoco Piano",
+            "e4 e5 Nf3 Nc6 Bc4 Nf6": "Two Knights Defense",
+            "e4 e5 Nf3 Nc6 d4": "Scotch Game",
+            "e4 e5 f4": "King's Gambit",
+            "e4 c5": "Sicilian Defense",
+            "e4 c5 Nf3": "Open Sicilian",
+            "e4 c5 Nf3 d6": "Sicilian Defense: Modern",
+            "e4 c5 Nf3 Nc6": "Sicilian Defense: Old Sicilian",
+            "e4 e6": "French Defense",
+            "e4 e6 d4 d5": "French Defense: Main Line",
+            "e4 c6": "Caro-Kann Defense",
+            "e4 c6 d4 d5": "Caro-Kann Defense: Main Line",
+            "e4 d5": "Scandinavian Defense",
+            "d4": "Queen's Pawn Opening",
+            "d4 d5": "Closed Game",
+            "d4 d5 c4": "Queen's Gambit",
+            "d4 d5 c4 e6": "Queen's Gambit Declined",
+            "d4 d5 c4 c6": "Slav Defense",
+            "d4 d5 c4 dxc4": "Queen's Gambit Accepted",
+            "d4 d5 Bf4": "London System",
+            "d4 Nf6": "Indian Defense",
+            "d4 Nf6 c4 g6": "King's Indian Defense",
+            "d4 Nf6 c4 e6": "Nimzo / Queen's Indian",
+            "c4": "English Opening",
+            "Nf3": "Réti Opening"
+        };
+
+        const PUZZLE_BANK = [
+            {
+                id: 101,
+                title: "Smothered Royal Fork",
+                theme: "Knight Fork Tactic",
+                rating: 1150,
+                fen: "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4",
+                solution: ["Qxf7#"],
+                prompt: "White to move and deliver immediate checkmate!"
+            },
+            {
+                id: 102,
+                title: "Back Rank Execution",
+                theme: "Back-Rank Mate",
+                rating: 1280,
+                fen: "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
+                solution: ["Rd8#"],
+                prompt: "White to move. Exploit Black's unguarded back rank!"
+            },
+            {
+                id: 103,
+                title: "Queen Sacrifice Decoy",
+                theme: "Knight Fork on c7",
+                rating: 1380,
+                fen: "r1b1k2r/ppppqppp/2n2n2/4p3/1bB1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 3 6",
+                solution: ["O-O"],
+                prompt: "White to move: Secure the King and activate the Rook!"
+            },
+            {
+                id: 104,
+                title: "Greek Gift Strike",
+                theme: "Checkmate on h7",
+                rating: 1490,
+                fen: "r1bq1rk1/ppp2ppp/2n5/3np1N1/2B5/8/PPPP1PPP/RNBQK2R w KQ - 0 8",
+                solution: ["Qh5"],
+                prompt: "White to move: Create an unstoppable mate threat on h7 & f7!"
+            },
+            {
+                id: 105,
+                title: "Deadly Pin Exploitation",
+                theme: "Winning the Queen",
+                rating: 1560,
+                fen: "r2qkb1r/ppp2ppp/2np1n2/4p1B1/2B1P1b1/2NP1N2/PPP2PPP/R2QK2R w KQkq - 2 6",
+                solution: ["Nd5"],
+                prompt: "White to move: Jump into the outpost to pile tremendous pressure on f6!"
+            },
+            {
+                id: 106,
+                title: "Arabian Mate Pattern",
+                theme: "Rook + Knight Coordination",
+                rating: 1640,
+                fen: "7k/7p/5N2/8/8/8/6PP/6RK w - - 0 1",
+                solution: ["Rg8#"],
+                prompt: "White to move: Deliver mate using the Knight & Rook duo!"
+            },
+            {
+                id: 107,
+                title: "Double Check Finisher",
+                theme: "Discovered Attack",
+                rating: 1750,
+                fen: "r1bqk2r/ppp2ppp/2n5/3np1N1/1bB5/2N5/PPPP1PPP/R1BQK2R w KQkq - 3 7",
+                solution: ["Nxf7"],
+                prompt: "White to move: Strike the vulnerable f7 square Forking Queen and Rook!"
+            }
+        ];
+
+        /* ============================================================================
+         * 5. APPLICATION STATE & PERSISTENCE
+         * ============================================================================ */
+        const state = {
+            userElo: 1200,
+            calibrated: false,
+            puzzleRating: 1350,
+            puzzleStreak: 0,
+            soundEnabled: true,
+            coachStrictness: 'normal', // 'easy' | 'normal' | 'hard'
+            selectedBot: BOTS_DATA[20], // Default Viktor 1250
+            playerColor: 'w',
+            boardFlipped: false,
+            isCalibrationGame: false,
+            calibrationDynamicElo: 1200,
+            beatenBotIds: new Set(),
+            lifetimeGrades: {
+                brilliant: 2, great: 5, best: 24, excellent: 18, good: 14,
+                book: 16, ok: 8, inaccuracy: 5, mistake: 3, blunder: 1
+            },
+            recentGames: [
+                { id: 1, opponent: "Cafe Barista Leo (750)", result: "Win", accuracy: "91.4%", date: "Sample Match", movesCount: 24 }
+            ],
+            // Active Game State
+            chess: new Chess(),
+            selectedSquare: null,
+            legalMovesForSelected: [],
+            pendingPromotionMove: null,
+            lastMoveSquares: [],
+            hintSquares: [],
+            moveEvaluations: [], // Array of { ply, san, color, fenBefore, fenAfter, cpBefore, cpAfter, cpLoss, bestMoveSan, gradeKey, explanation }
+            // Review State
+            reviewGameData: null,
+            reviewCurrentPly: 0,
+            // Puzzle State
+            puzzleChess: new Chess(),
+            currentPuzzle: null,
+            puzzleSelectedSquare: null,
+            puzzleLegalMoves: [],
+            // Modal config
+            modalSelectedColor: 'w',
+            // Stockfish Web Worker
+            sfWorker: null,
+            sfReady: false
+        };
+
+        // Load saved profile from localStorage if available
+        function loadSavedState() {
+            try {
+                const raw = localStorage.getItem('apex_chess_profile_v1');
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed.userElo) state.userElo = parsed.userElo;
+                    if (parsed.calibrated) state.calibrated = parsed.calibrated;
+                    if (parsed.puzzleRating) state.puzzleRating = parsed.puzzleRating;
+                    if (parsed.lifetimeGrades) state.lifetimeGrades = parsed.lifetimeGrades;
+                    if (parsed.beatenBotIds) state.beatenBotIds = new Set(parsed.beatenBotIds);
+                    if (parsed.recentGames && parsed.recentGames.length) state.recentGames = parsed.recentGames;
+                }
+            } catch (e) {
+                console.warn('Could not load saved profile:', e);
+            }
+        }
+
+        function saveProfileState() {
+            try {
+                localStorage.setItem('apex_chess_profile_v1', JSON.stringify({
+                    userElo: state.userElo,
+                    calibrated: state.calibrated,
+                    puzzleRating: state.puzzleRating,
+                    lifetimeGrades: state.lifetimeGrades,
+                    beatenBotIds: Array.from(state.beatenBotIds),
+                    recentGames: state.recentGames.slice(0, 12)
+                }));
+            } catch (e) {
+                console.warn('Could not save profile:', e);
+            }
+        }
+
+        /* ============================================================================
+         * 6. WEB AUDIO SYNTHESIZER FOR CHESS SOUNDS
+         * ============================================================================ */
+        let audioCtx = null;
+        function playChessSound(type) {
+            if (!state.soundEnabled) return;
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                if (type === 'move') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(220, now);
+                    osc.frequency.exponentialRampToValueAtTime(120, now + 0.06);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+                    osc.start(now);
+                    osc.stop(now + 0.07);
+                } else if (type === 'capture') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(300, now);
+                    osc.frequency.exponentialRampToValueAtTime(90, now + 0.09);
+                    gain.gain.setValueAtTime(0.22, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+                } else if (type === 'check') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(587.33, now);
+                    osc.frequency.setValueAtTime(880, now + 0.07);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+                    osc.start(now);
+                    osc.stop(now + 0.23);
+                } else if (type === 'brilliant') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(523.25, now);
+                    osc.frequency.setValueAtTime(659.25, now + 0.07);
+                    osc.frequency.setValueAtTime(1046.5, now + 0.14);
+                    gain.gain.setValueAtTime(0.22, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                    osc.start(now);
+                    osc.stop(now + 0.36);
+                } else if (type === 'blunder') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(190, now);
+                    osc.frequency.linearRampToValueAtTime(110, now + 0.25);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+                    osc.start(now);
+                    osc.stop(now + 0.29);
+                }
+            } catch (err) {
+                // Ignore audio context restrictions
+            }
+        }
+
+        function toggleSound() {
+            state.soundEnabled = !state.soundEnabled;
+            const btn = document.getElementById('sound-btn');
+            btn.innerHTML = state.soundEnabled ? '<i class="fa-solid fa-volume-high"></i>' : '<i class="fa-solid fa-volume-xmark text-rose-400"></i>';
+            showToast(state.soundEnabled ? "Sound Effects Enabled" : "Sound Effects Muted");
+        }
+
+        /* ============================================================================
+         * 7. HYBRID STOCKFISH WORKER + BUILT-IN TACTICAL CHESS ENGINE
+         * ============================================================================ */
+        function initStockfishEngine() {
+            try {
+                const blobCode = `
+                    importScripts('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');
+                `;
+                const blob = new Blob([blobCode], { type: 'application/javascript' });
+                const workerUrl = URL.createObjectURL(blob);
+                const worker = new Worker(workerUrl);
+                worker.onmessage = function(e) {
+                    const line = e.data || '';
+                    if (line.includes('uciok') || line.includes('readyok')) {
+                        state.sfReady = true;
+                        document.getElementById('engine-status-text').textContent = 'Stockfish 10 Ready';
+                    }
+                };
+                worker.onerror = function() {
+                    state.sfReady = false;
+                    document.getElementById('engine-status-text').textContent = 'Apex Tactical Engine';
+                };
+                worker.postMessage('uci');
+                worker.postMessage('isready');
+                state.sfWorker = worker;
+            } catch (e) {
+                state.sfReady = false;
+                document.getElementById('engine-status-text').textContent = 'Apex Tactical Engine';
+            }
+        }
+
+        // Piece values in centipawns
+        const PIECE_VALUES = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
+
+        // Piece-Square Tables (from White's perspective, flipped for Black)
+        const PST = {
+            p: [
+                 0,  0,  0,  0,  0,  0,  0,  0,
+                50, 50, 50, 50, 50, 50, 50, 50,
+                10, 10, 20, 30, 30, 20, 10, 10,
+                 5,  5, 10, 27, 27, 10,  5,  5,
+                 0,  0,  0, 24, 24,  0,  0,  0,
+                 5, -5,-10,  0,  0,-10, -5,  5,
+                 5, 10, 10,-25,-25, 10, 10,  5,
+                 0,  0,  0,  0,  0,  0,  0,  0
+            ],
+            n: [
+                -50,-40,-30,-30,-30,-30,-40,-50,
+                -40,-20,  0,  0,  0,  0,-20,-40,
+                -30,  0, 10, 15, 15, 10,  0,-30,
+                -30,  5, 15, 20, 20, 15,  5,-30,
+                -30,  0, 15, 20, 20, 15,  0,-30,
+                -30,  5, 10, 15, 15, 10,  5,-30,
+                -40,-20,  0,  5,  5,  0,-20,-40,
+                -50,-40,-30,-30,-30,-30,-40,-50
+            ],
+            b: [
+                -20,-10,-10,-10,-10,-10,-10,-20,
+                -10,  0,  0,  0,  0,  0,  0,-10,
+                -10,  0,  5, 10, 10,  5,  0,-10,
+                -10,  5,  5, 10, 10,  5,  5,-10,
+                -10,  0, 10, 10, 10, 10,  0,-10,
+                -10, 10, 10, 10, 10, 10, 10,-10,
+                -10,  5,  0,  0,  0,  0,  5,-10,
+                -20,-10,-10,-10,-10,-10,-10,-20
+            ],
+            r: [
+                  0,  0,  0,  0,  0,  0,  0,  0,
+                  5, 10, 10, 10, 10, 10, 10,  5,
+                 -5,  0,  0,  0,  0,  0,  0, -5,
+                 -5,  0,  0,  0,  0,  0,  0, -5,
+                 -5,  0,  0,  0,  0,  0,  0, -5,
+                 -5,  0,  0,  0,  0,  0,  0, -5,
+                 -5,  0,  0,  0,  0,  0,  0, -5,
+                  0,  0,  0,  5,  5,  0,  0,  0
+            ],
+            q: [
+                -20,-10,-10, -5, -5,-10,-10,-20,
+                -10,  0,  0,  0,  0,  0,  0,-10,
+                -10,  0,  5,  5,  5,  5,  0,-10,
+                 -5,  0,  5,  5,  5,  5,  0, -5,
+                  0,  0,  5,  5,  5,  5,  0, -5,
+                -10,  5,  5,  5,  5,  5,  0,-10,
+                -10,  0,  5,  0,  0,  0,  0,-10,
+                -20,-10,-10, -5, -5,-10,-10,-20
+            ],
+            k: [
+                -30,-40,-40,-50,-50,-40,-40,-30,
+                -30,-40,-40,-50,-50,-40,-40,-30,
+                -30,-40,-40,-50,-50,-40,-40,-30,
+                -30,-40,-40,-50,-50,-40,-40,-30,
+                -20,-30,-30,-40,-40,-30,-30,-20,
+                -10,-20,-20,-20,-20,-20,-20,-10,
+                 20, 20,  0,  0,  0,  0, 20, 20,
+                 20, 30, 10,  0,  0, 10, 30, 20
+            ]
+        };
+
+        // Evaluate board from White's perspective in centipawns
+        function evaluatePositionCentipawns(chessInstance) {
+            if (chessInstance.in_checkmate()) {
+                return chessInstance.turn() === 'w' ? -9999 : 9999;
+            }
+            if (chessInstance.in_draw() || chessInstance.in_stalemate() || chessInstance.in_threefold_repetition()) {
+                return 0;
+            }
+
+            const board = chessInstance.board();
+            let score = 0;
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const piece = board[r][c];
+                    if (!piece) continue;
+                    const base = PIECE_VALUES[piece.type] || 0;
+                    const idx = piece.color === 'w' ? (r * 8 + c) : ((7 - r) * 8 + c);
+                    const positional = PST[piece.type] ? PST[piece.type][idx] : 0;
+                    if (piece.color === 'w') {
+                        score += base + positional;
+                    } else {
+                        score -= (base + positional);
+                    }
+                }
+            }
+
+            if (chessInstance.in_check()) {
+                score += (chessInstance.turn() === 'w' ? -35 : 35);
+            }
+            return score;
+        }
+
+        // Order moves for faster alpha-beta pruning
+        function orderMoves(moves) {
+            return moves.sort((a, b) => {
+                let scoreA = (a.captured ? 10 * (PIECE_VALUES[a.captured] || 100) - (PIECE_VALUES[a.piece] || 100) : 0) + (a.promotion ? 800 : 0);
+                let scoreB = (b.captured ? 10 * (PIECE_VALUES[b.captured] || 100) - (PIECE_VALUES[b.piece] || 100) : 0) + (b.promotion ? 800 : 0);
+                return scoreB - scoreA;
+            });
+        }
+
+        function minimaxAlphaBeta(chessInstance, depth, alpha, beta, maximizingPlayer) {
+            if (depth === 0 || chessInstance.game_over()) {
+                return evaluatePositionCentipawns(chessInstance);
+            }
+
+            const legalMoves = orderMoves(chessInstance.moves({ verbose: true }));
+            if (maximizingPlayer) {
+                let maxEval = -999999;
+                for (let i = 0; i < legalMoves.length; i++) {
+                    chessInstance.move(legalMoves[i]);
+                    const evaluation = minimaxAlphaBeta(chessInstance, depth - 1, alpha, beta, false);
+                    chessInstance.undo();
+                    if (evaluation > maxEval) maxEval = evaluation;
+                    if (evaluation > alpha) alpha = evaluation;
+                    if (beta <= alpha) break;
+                }
+                return maxEval;
+            } else {
+                let minEval = 999999;
+                for (let i = 0; i < legalMoves.length; i++) {
+                    chessInstance.move(legalMoves[i]);
+                    const evaluation = minimaxAlphaBeta(chessInstance, depth - 1, alpha, beta, true);
+                    chessInstance.undo();
+                    if (evaluation < minEval) minEval = evaluation;
+                    if (evaluation < beta) beta = evaluation;
+                    if (beta <= alpha) break;
+                }
+                return minEval;
+            }
+        }
+
+        // Returns ranked moves from best to worst for the side to move
+        function analyzeAllMovesForPosition(fen, searchDepth = 2) {
+            const tempChess = new Chess(fen);
+            const turn = tempChess.turn();
+            const moves = orderMoves(tempChess.moves({ verbose: true }));
+            const scoredMoves = [];
+
+            for (let i = 0; i < moves.length; i++) {
+                const mv = moves[i];
+                tempChess.move(mv);
+                const cpWhite = minimaxAlphaBeta(tempChess, searchDepth - 1, -999999, 999999, tempChess.turn() === 'w');
+                tempChess.undo();
+
+                // Convert to mover's perspective so higher is always better for mover
+                const moverScore = turn === 'w' ? cpWhite : -cpWhite;
+                scoredMoves.push({
+                    move: mv,
+                    san: mv.san,
+                    cpWhite: cpWhite,
+                    moverScore: moverScore
+                });
+            }
+
+            scoredMoves.sort((a, b) => b.moverScore - a.moverScore);
+            return scoredMoves;
+        }
+
+        /* ============================================================================
+         * 8. 10-GRADE COACH MOVE CLASSIFIER (EASY / NORMAL / HARD STRICTNESS)
+         * ============================================================================ */
+        function classifyMoveWithCoach(fenBefore, moveVerbose, plyNumber, strictness = state.coachStrictness) {
+            const ranked = analyzeAllMovesForPosition(fenBefore, 2);
+            if (!ranked.length) return null;
+
+            const bestEntry = ranked[0];
+            const secondBestEntry = ranked[1] || ranked[0];
+            const playedEntry = ranked.find(r => r.san === moveVerbose.san) || ranked[0];
+
+            // Centipawn loss from the mover's perspective (always >= 0)
+            const rawCpLoss = Math.max(0, bestEntry.moverScore - playedEntry.moverScore);
+
+            // Check if current move sequence is in the Opening Book
+            const historySans = state.chess.history();
+            const prefixMoves = historySans.slice(0, Math.min(historySans.length, 6)).join(' ');
+            const isBookMove = plyNumber <= 8 && (OPENING_BOOK[prefixMoves] !== undefined || (plyNumber <= 4 && rawCpLoss <= 25));
+
+            // Strictness multiplier:
+            // Easy: forgiving thresholds (1.45x wider)
+            // Normal: standard Chess.com style (1.0x)
+            // Hard: strict GM grading (0.6x)
+            const mult = strictness === 'easy' ? 1.5 : (strictness === 'hard' ? 0.6 : 1.0);
+
+            let gradeKey = 'good';
+            let explanation = '';
+
+            // Detect tactical sacrifice or huge swing for Brilliant (!!) and Great (!)
+            const isSacrificeOrSharp = (moveVerbose.captured && PIECE_VALUES[moveVerbose.piece] > PIECE_VALUES[moveVerbose.captured]) || moveVerbose.san.includes('+');
+            const gapToSecondBest = bestEntry.moverScore - secondBestEntry.moverScore;
+
+            if (isBookMove && rawCpLoss <= 30 * mult) {
+                gradeKey = 'book';
+                explanation = `Standard opening theory (${OPENING_BOOK[prefixMoves] || 'Classical Development'}). Solid development!`;
+            } else if (rawCpLoss <= 12 * mult && (isSacrificeOrSharp || (strictness === 'easy' && gapToSecondBest >= 80)) && playedEntry.moverScore > -150) {
+                gradeKey = 'brilliant';
+                explanation = `Brilliant tactical resource (${moveVerbose.san}!!)! You spotted a high-impact forcing idea.`;
+            } else if (rawCpLoss <= 15 * mult && gapToSecondBest >= (strictness === 'hard' ? 140 : 90)) {
+                gradeKey = 'great';
+                explanation = `Great move (${moveVerbose.san}!) — found the critical only move that maintains the edge.`;
+            } else if (playedEntry.san === bestEntry.san || rawCpLoss <= 10 * mult) {
+                gradeKey = 'best';
+                explanation = `Best engine move (${moveVerbose.san}). Optimal piece placement and maximum pressure.`;
+            } else if (rawCpLoss <= 30 * mult) {
+                gradeKey = 'excellent';
+                explanation = `Excellent move! Nearly indistinguishable from the top engine choice (${bestEntry.san}).`;
+            } else if (rawCpLoss <= 60 * mult) {
+                gradeKey = 'good';
+                explanation = `Good solid move. Keeps a playable structure, though ${bestEntry.san} was slightly more active.`;
+            } else if (rawCpLoss <= 95 * mult) {
+                gradeKey = 'ok';
+                explanation = `Okay move. Playable, though ${bestEntry.san} offered better coordination.`;
+            } else if (rawCpLoss <= 165 * mult) {
+                gradeKey = 'inaccuracy';
+                explanation = `Inaccuracy (?!). Gives up ${(rawCpLoss / 100).toFixed(2)} pawns of evaluation. Prefer ${bestEntry.san}.`;
+            } else if (rawCpLoss <= 300 * mult) {
+                gradeKey = 'mistake';
+                explanation = `Mistake (?). Loses significant ground (${(rawCpLoss / 100).toFixed(2)} eval drop). ${bestEntry.san} was required.`;
+            } else {
+                gradeKey = 'blunder';
+                explanation = `Blunder (??)! Drops major material or tactical safety (${(rawCpLoss / 100).toFixed(2)} eval swing). Best was ${bestEntry.san}.`;
+            }
+
+            return {
+                ply: plyNumber,
+                san: moveVerbose.san,
+                from: moveVerbose.from,
+                to: moveVerbose.to,
+                color: moveVerbose.color,
+                fenBefore,
+                fenAfter: state.chess.fen(),
+                cpWhiteAfter: playedEntry.cpWhite,
+                cpLoss: rawCpLoss,
+                bestMoveSan: bestEntry.san,
+                gradeKey,
+                explanation
+            };
+        }
+
+        /* ============================================================================
+         * 9. BOT AI PERSONALITY ENGINE (250 TO 2850 ELO)
+         * ============================================================================ */
+        function chooseBotMove() {
+            if (state.chess.game_over()) return;
+
+            const effectiveElo = state.isCalibrationGame ? state.calibrationDynamicElo : state.selectedBot.elo;
+            const searchDepth = effectiveElo >= 2000 ? 3 : 2;
+            const ranked = analyzeAllMovesForPosition(state.chess.fen(), searchDepth);
+            if (!ranked.length) return;
+
+            // Determine bot error temperature based on Elo (250 Elo = high randomness, 2850 = pure best move)
+            let chosenEntry = ranked[0];
+            if (effectiveElo < 600) {
+                // Beginner bots frequently pick suboptimal moves
+                const poolSize = Math.min(ranked.length, 8);
+                const randomIndex = Math.floor(Math.random() * poolSize);
+                chosenEntry = ranked[randomIndex];
+            } else if (effectiveElo < 1100) {
+                const poolSize = Math.min(ranked.length, 5);
+                const idx = Math.random() < 0.45 ? 0 : Math.floor(Math.random() * poolSize);
+                chosenEntry = ranked[idx];
+            } else if (effectiveElo < 1600) {
+                const poolSize = Math.min(ranked.length, 3);
+                const idx = Math.random() < 0.7 ? 0 : Math.floor(Math.random() * poolSize);
+                chosenEntry = ranked[idx];
+            } else if (effectiveElo < 2200) {
+                chosenEntry = (ranked.length > 1 && Math.random() < 0.18 && (ranked[0].moverScore - ranked[1].moverScore < 65))
+                    ? ranked[1]
+                    : ranked[0];
+            } else {
+                // Grandmaster & Apex bots always play the top engine move
+                chosenEntry = ranked[0];
+            }
+
+            const fenBefore = state.chess.fen();
+            const plyNumber = state.chess.history().length + 1;
+            const moveObj = state.chess.move(chosenEntry.move);
+
+            if (moveObj) {
+                state.lastMoveSquares = [moveObj.from, moveObj.to];
+                const botEval = classifyMoveWithCoach(fenBefore, moveObj, plyNumber, state.coachStrictness);
+                if (botEval) state.moveEvaluations.push(botEval);
+
+                playChessSound(state.chess.in_check() ? 'check' : (moveObj.captured ? 'capture' : 'move'));
+                updateOpeningDisplay();
+                renderMainBoard();
+                updateEvaluationBar(botEval ? botEval.cpWhiteAfter : evaluatePositionCentipawns(state.chess));
+                updateMoveHistoryUI();
+
+                if (state.chess.game_over()) {
+                    handleGameCompletion();
+                }
+            }
+        }
+
+        /* ============================================================================
+         * 10. INTERACTIVE CHESSBOARD RENDERER & CLICK HANDLERS
+         * ============================================================================ */
+        function renderMainBoard() {
+            const container = document.getElementById('main-chessboard');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const boardState = state.chess.board();
+            const lastEval = state.moveEvaluations[state.moveEvaluations.length - 1];
+
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    const r = state.boardFlipped ? 7 - row : row;
+                    const c = state.boardFlipped ? 7 - col : col;
+
+                    const fileChar = String.fromCharCode(97 + c);
+                    const rankChar = String(8 - r);
+                    const sqName = fileChar + rankChar;
+                    const isLight = (r + c) % 2 === 0;
+
+                    const sqEl = document.createElement('div');
+                    sqEl.className = `square ${isLight ? 'light' : 'dark'}`;
+                    sqEl.dataset.square = sqName;
+
+                    if (state.selectedSquare === sqName) sqEl.classList.add('selected');
+                    if (state.lastMoveSquares.includes(sqName)) sqEl.classList.add('last-move');
+                    if (state.hintSquares.includes(sqName)) sqEl.classList.add('hint-square');
+
+                    const piece = boardState[r][c];
+                    if (piece && piece.type === 'k' && piece.color === state.chess.turn() && state.chess.in_check()) {
+                        sqEl.classList.add('in-check');
+                    }
+
+                    // Coordinate Labels
+                    if (col === 0) {
+                        const rankSpan = document.createElement('span');
+                        rankSpan.className = 'coord-rank';
+                        rankSpan.textContent = rankChar;
+                        sqEl.appendChild(rankSpan);
+                    }
+                    if (row === 7) {
+                        const fileSpan = document.createElement('span');
+                        fileSpan.className = 'coord-file';
+                        fileSpan.textContent = fileChar;
+                        sqEl.appendChild(fileSpan);
+                    }
+
+                    // Piece SVG
+                    if (piece) {
+                        const key = piece.color + piece.type;
+                        sqEl.insertAdjacentHTML('beforeend', PIECE_SVGS[key] || '');
+                    }
+
+                    // Legal move indicator dot or capture ring
+                    const legalMatch = state.legalMovesForSelected.find(m => m.to === sqName);
+                    if (legalMatch) {
+                        const indicator = document.createElement('div');
+                        indicator.className = legalMatch.captured ? 'legal-capture' : 'legal-dot';
+                        sqEl.appendChild(indicator);
+                    }
+
+                    // Coach Badge on the destination square of the last move
+                    if (lastEval && lastEval.to === sqName) {
+                        const gradeMeta = MOVE_GRADES[lastEval.gradeKey];
+                        if (gradeMeta) {
+                            const badge = document.createElement('div');
+                            badge.className = 'move-badge-on-board';
+                            badge.style.backgroundColor = gradeMeta.color;
+                            badge.style.color = '#080d1a';
+                            badge.textContent = gradeMeta.sym;
+                            badge.title = `${gradeMeta.label}: ${lastEval.explanation}`;
+                            sqEl.appendChild(badge);
+                        }
+                    }
+
+                    sqEl.addEventListener('click', () => onBoardSquareClick(sqName));
+                    container.appendChild(sqEl);
+                }
+            }
+        }
+
+        function onBoardSquareClick(sqName) {
+            if (state.chess.game_over()) return;
+            if (state.chess.turn() !== state.playerColor) return;
+
+            // Check if clicked square is a legal destination for currently selected piece
+            const matchingMoves = state.legalMovesForSelected.filter(m => m.to === sqName);
+            if (state.selectedSquare && matchingMoves.length > 0) {
+                // Check if promotion move
+                if (matchingMoves.some(m => m.promotion)) {
+                    state.pendingPromotionMove = { from: state.selectedSquare, to: sqName };
+                    document.getElementById('promotion-modal').classList.remove('hidden');
+                    return;
+                }
+                executePlayerMove({ from: state.selectedSquare, to: sqName });
+                return;
+            }
+
+            // Otherwise select own piece on that square
+            const piece = state.chess.get(sqName);
+            if (piece && piece.color === state.playerColor) {
+                state.selectedSquare = sqName;
+                state.legalMovesForSelected = state.chess.moves({ square: sqName, verbose: true });
+                renderMainBoard();
+            } else {
+                state.selectedSquare = null;
+                state.legalMovesForSelected = [];
+                renderMainBoard();
+            }
+        }
+
+        function completePromotion(promoPiece) {
+            document.getElementById('promotion-modal').classList.add('hidden');
+            if (!state.pendingPromotionMove) return;
+            executePlayerMove({
+                from: state.pendingPromotionMove.from,
+                to: state.pendingPromotionMove.to,
+                promotion: promoPiece
+            });
+            state.pendingPromotionMove = null;
+        }
+
+        function executePlayerMove(moveSpec) {
+            const fenBefore = state.chess.fen();
+            const plyNumber = state.chess.history().length + 1;
+            const moveObj = state.chess.move(moveSpec);
+            if (!moveObj) return;
+
+            state.selectedSquare = null;
+            state.legalMovesForSelected = [];
+            state.hintSquares = [];
+            state.lastMoveSquares = [moveObj.from, moveObj.to];
+
+            // Grade the player's move using our 10-Grade Coach
+            const evalData = classifyMoveWithCoach(fenBefore, moveObj, plyNumber, state.coachStrictness);
+            if (evalData) {
+                state.moveEvaluations.push(evalData);
+                // Update lifetime grade tally
+                state.lifetimeGrades[evalData.gradeKey] = (state.lifetimeGrades[evalData.gradeKey] || 0) + 1;
+                updateCoachFeedbackCard(evalData);
+
+                // Dynamic adjustment during 1-Game Calibration Mode
+                if (state.isCalibrationGame) {
+                    const weight = MOVE_GRADES[evalData.gradeKey].weight;
+                    if (weight >= 92) state.calibrationDynamicElo = Math.min(2650, state.calibrationDynamicElo + 85);
+                    else if (weight >= 75) state.calibrationDynamicElo = Math.min(2650, state.calibrationDynamicElo + 25);
+                    else if (weight <= 25) state.calibrationDynamicElo = Math.max(350, state.calibrationDynamicElo - 110);
+                    else state.calibrationDynamicElo = Math.max(350, state.calibrationDynamicElo - 40);
+
+                    document.getElementById('opponent-elo-badge').textContent = `~${Math.round(state.calibrationDynamicElo)}`;
+                }
+
+                // Sound cues for special grades
+                if (evalData.gradeKey === 'brilliant') playChessSound('brilliant');
+                else if (evalData.gradeKey === 'blunder') playChessSound('blunder');
+                else playChessSound(state.chess.in_check() ? 'check' : (moveObj.captured ? 'capture' : 'move'));
+            }
+
+            updateOpeningDisplay();
+            renderMainBoard();
+            updateEvaluationBar(evalData ? evalData.cpWhiteAfter : evaluatePositionCentipawns(state.chess));
+            updateLiveGradeCounters();
+            updateMoveHistoryUI();
+            saveProfileState();
+
+            if (state.chess.game_over()) {
+                handleGameCompletion();
+                return;
+            }
+
+            // Trigger Bot reply after brief natural pause
+            setTimeout(chooseBotMove, 260);
+        }
+
+        /* ============================================================================
+         * 11. LIVE COACH PANEL, EVAL BAR, & MOVE HISTORY UPDATES
+         * ============================================================================ */
+        function updateCoachFeedbackCard(evalData) {
+            const grade = MOVE_GRADES[evalData.gradeKey];
+            const iconBox = document.getElementById('coach-badge-icon');
+            const sanText = document.getElementById('coach-move-san');
+            const pill = document.getElementById('coach-grade-pill');
+            const expl = document.getElementById('coach-explanation');
+            const bestMoveTxt = document.getElementById('coach-best-move-text');
+            const cpLossTxt = document.getElementById('coach-cp-loss');
+
+            iconBox.textContent = grade.sym;
+            iconBox.style.color = grade.color;
+            iconBox.style.borderColor = grade.color;
+
+            sanText.textContent = `${Math.ceil(evalData.ply / 2)}${evalData.color === 'w' ? '.' : '...'} ${evalData.san}`;
+            pill.textContent = `${grade.label} (${grade.sym})`;
+            pill.className = `px-2.5 py-0.5 rounded-full text-xs font-extrabold ${grade.bg} ${grade.text} border ${grade.border}`;
+
+            expl.textContent = evalData.explanation;
+            bestMoveTxt.textContent = evalData.bestMoveSan;
+            cpLossTxt.textContent = `-${(evalData.cpLoss / 100).toFixed(2)}`;
+        }
+
+        function updateEvaluationBar(cpWhite) {
+            const clamped = Math.max(-1000, Math.min(1000, cpWhite));
+            // Convert centipawns (-1000..+1000) to White height % (5%..95%)
+            const whitePercent = 50 + (clamped / 1000) * 45;
+            const blackPercent = 100 - whitePercent;
+
+            document.getElementById('eval-bar-black').style.height = `${blackPercent}%`;
+            document.getElementById('eval-bar-white').style.height = `${whitePercent}%`;
+
+            const pawns = (cpWhite / 100).toFixed(1);
+            document.getElementById('eval-bar-text').textContent = (cpWhite >= 0 ? `+${pawns}` : pawns);
+        }
+
+        function updateOpeningDisplay() {
+            const history = state.chess.history();
+            let detected = null;
+            for (let len = Math.min(history.length, 6); len >= 1; len--) {
+                const key = history.slice(0, len).join(' ');
+                if (OPENING_BOOK[key]) {
+                    detected = OPENING_BOOK[key];
+                    break;
+                }
+            }
+            if (detected) {
+                document.getElementById('opening-name-display').textContent = `📖 ${detected}`;
+            }
+        }
+
+        function updateLiveGradeCounters() {
+            const container = document.getElementById('live-grade-counters');
+            if (!container) return;
+
+            const userMoves = state.moveEvaluations.filter(m => m.color === state.playerColor);
+            const counts = {};
+            GRADE_ORDER.forEach(k => counts[k] = 0);
+            let totalWeight = 0;
+
+            userMoves.forEach(m => {
+                counts[m.gradeKey] = (counts[m.gradeKey] || 0) + 1;
+                totalWeight += MOVE_GRADES[m.gradeKey].weight;
+            });
+
+            const accuracy = userMoves.length ? (totalWeight / userMoves.length).toFixed(1) : '100.0';
+            document.getElementById('live-accuracy-display').textContent = `Accuracy: ${accuracy}%`;
+
+            container.innerHTML = GRADE_ORDER.map(key => {
+                const g = MOVE_GRADES[key];
+                const cnt = counts[key] || 0;
+                return `
+                    <div class="p-1.5 rounded-lg bg-slate-950 border border-slate-800/90 flex flex-col items-center">
+                        <span class="text-[10px] font-bold ${g.text}">${g.label}</span>
+                        <span class="font-mono font-black text-xs text-white mt-0.5">${cnt}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateMoveHistoryUI() {
+            const list = document.getElementById('move-history-list');
+            if (!list) return;
+            if (state.moveEvaluations.length === 0) {
+                list.innerHTML = `<div class="text-slate-500 text-center py-12">No moves played yet.</div>`;
+                return;
+            }
+
+            let html = '';
+            for (let i = 0; i < state.moveEvaluations.length; i += 2) {
+                const moveNum = Math.floor(i / 2) + 1;
+                const wMove = state.moveEvaluations[i];
+                const bMove = state.moveEvaluations[i + 1];
+
+                const wGrade = wMove ? MOVE_GRADES[wMove.gradeKey] : null;
+                const bGrade = bMove ? MOVE_GRADES[bMove.gradeKey] : null;
+
+                html += `
+                    <div class="grid grid-cols-7 items-center py-1 px-2 rounded hover:bg-slate-900/90">
+                        <span class="text-slate-500 col-span-1">${moveNum}.</span>
+                        <div class="col-span-3 flex items-center gap-1.5">
+                            <span class="text-white font-semibold">${wMove ? wMove.san : ''}</span>
+                            ${wGrade ? `<span class="px-1.5 py-0.2 rounded text-[10px] font-bold ${wGrade.bg} ${wGrade.text}">${wGrade.label}</span>` : ''}
+                        </div>
+                        <div class="col-span-3 flex items-center gap-1.5">
+                            <span class="text-slate-300 font-semibold">${bMove ? bMove.san : ''}</span>
+                            ${bGrade ? `<span class="px-1.5 py-0.2 rounded text-[10px] font-bold ${bGrade.bg} ${bGrade.text}">${bGrade.label}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            list.innerHTML = html;
+            list.scrollTop = list.scrollHeight;
+        }
+
+        /* ============================================================================
+         * 12. STRICTNESS CONTROLS, HINTS, & 1-GAME CALIBRATION COMPLETION
+         * ============================================================================ */
+        function setCoachStrictness(level) {
+            state.coachStrictness = level;
+            // Sync UI buttons
+            ['easy', 'normal', 'hard'].forEach(l => {
+                const btn = document.getElementById(`strict-${l}`);
+                if (btn) {
+                    btn.className = l === level
+                        ? 'strict-btn px-2.5 py-1 rounded-lg font-semibold bg-emerald-500 text-slate-950'
+                        : 'strict-btn px-2.5 py-1 rounded-lg font-semibold text-slate-400 hover:text-white';
+                }
+            });
+            const dashSel = document.getElementById('dash-strictness-select');
+            if (dashSel) dashSel.value = level;
+            const revSel = document.getElementById('review-strictness-select');
+            if (revSel) revSel.value = level;
+
+            // Re-grade active game moves immediately under new strictness
+            if (state.moveEvaluations.length > 0) {
+                state.moveEvaluations.forEach(item => {
+                    const temp = new Chess(item.fenBefore);
+                    const verbose = temp.moves({ verbose: true }).find(m => m.san === item.san);
+                    if (verbose) {
+                        const regraded = classifyMoveWithCoach(item.fenBefore, verbose, item.ply, level);
+                        if (regraded) {
+                            item.gradeKey = regraded.gradeKey;
+                            item.explanation = regraded.explanation;
+                        }
+                    }
+                });
+                updateCoachFeedbackCard(state.moveEvaluations[state.moveEvaluations.length - 1]);
+                updateLiveGradeCounters();
+                updateMoveHistoryUI();
+                renderMainBoard();
+            }
+            showToast(`Coach Grading Strictness: ${level.toUpperCase()}`);
+        }
+
+        function requestCoachHint() {
+            if (state.chess.game_over()) return;
+            const ranked = analyzeAllMovesForPosition(state.chess.fen(), 2);
+            if (!ranked.length) return;
+            const best = ranked[0].move;
+            state.hintSquares = [best.from, best.to];
+            renderMainBoard();
+            showToast(`Coach Hint: Consider ${best.san} (${best.from} → ${best.to})`);
+        }
+
+        function undoLastMovePair() {
+            if (state.chess.history().length < 2) return;
+            state.chess.undo();
+            state.chess.undo();
+            state.moveEvaluations.pop();
+            state.moveEvaluations.pop();
+            state.lastMoveSquares = [];
+            renderMainBoard();
+            updateLiveGradeCounters();
+            updateMoveHistoryUI();
+        }
+
+        function flipBoard() {
+            state.boardFlipped = !state.boardFlipped;
+            renderMainBoard();
+        }
+
+        function computeAccuracyForColor(evalList, color) {
+            const moves = evalList.filter(m => m.color === color);
+            if (!moves.length) return 85.0;
+            const sum = moves.reduce((acc, m) => acc + (MOVE_GRADES[m.gradeKey]?.weight || 75), 0);
+            return Number((sum / moves.length).toFixed(1));
+        }
+
+        function handleGameCompletion(forcedResign = false) {
+            const userMoves = state.moveEvaluations.filter(m => m.color === state.playerColor);
+            const userAcc = computeAccuracyForColor(state.moveEvaluations, state.playerColor);
+            const oppColor = state.playerColor === 'w' ? 'b' : 'w';
+            const oppAcc = computeAccuracyForColor(state.moveEvaluations, oppColor);
+
+            let outcomeTitle = "Game Drawn";
+            let userScore = 0.5;
+
+            if (forcedResign) {
+                outcomeTitle = state.isCalibrationGame ? "Calibration Assessment Complete" : "Game Finished / Resigned";
+                userScore = 0;
+            } else if (state.chess.in_checkmate()) {
+                const winnerColor = state.chess.turn() === 'w' ? 'b' : 'w';
+                if (winnerColor === state.playerColor) {
+                    outcomeTitle = "Victory by Checkmate!";
+                    userScore = 1;
+                    if (!state.isCalibrationGame) state.beatenBotIds.add(state.selectedBot.id);
+                } else {
+                    outcomeTitle = "Defeat by Checkmate";
+                    userScore = 0;
+                }
+            }
+
+            // Calculate Elo update or 1-Game Calibration Final Elo
+            if (state.isCalibrationGame) {
+                const avgCpLoss = userMoves.length
+                    ? userMoves.reduce((s, m) => s + m.cpLoss, 0) / userMoves.length
+                    : 45;
+                // Map ACPL + dynamic resistance + accuracy to calibrated Elo (350 - 2650)
+                const acplElo = Math.max(350, Math.min(2650, Math.round(2400 - avgCpLoss * 11.5)));
+                const blendedElo = Math.round(acplElo * 0.55 + state.calibrationDynamicElo * 0.45);
+                state.userElo = blendedElo;
+                state.calibrated = true;
+                outcomeTitle = `Calibrated Elo: ${blendedElo}`;
+                document.getElementById('calib-tab-last-elo').textContent = `${blendedElo} Elo (Verified)`;
+            } else {
+                const expected = 1 / (1 + Math.pow(10, (state.selectedBot.elo - state.userElo) / 400));
+                const kFactor = 32;
+                state.userElo = Math.max(200, Math.round(state.userElo + kFactor * (userScore - expected)));
+            }
+
+            // Save match for Post-Game Review
+            state.reviewGameData = {
+                title: state.isCalibrationGame
+                    ? `1-Game Elo Calibration (${state.userElo} Elo)`
+                    : `You vs ${state.selectedBot.name} (${state.selectedBot.elo})`,
+                userColor: state.playerColor,
+                userAcc,
+                oppAcc,
+                oppElo: state.isCalibrationGame ? Math.round(state.calibrationDynamicElo) : state.selectedBot.elo,
+                moves: [...state.moveEvaluations]
+            };
+
+            state.recentGames.unshift({
+                id: Date.now(),
+                opponent: state.isCalibrationGame ? "Adaptive Calibration AI" : `${state.selectedBot.name} (${state.selectedBot.elo})`,
+                result: userScore === 1 ? "Win" : (userScore === 0.5 ? "Draw" : (state.isCalibrationGame ? "Calibrated" : "Loss")),
+                accuracy: `${userAcc}%`,
+                date: "Just now",
+                movesCount: state.moveEvaluations.length
+            });
+
+            saveProfileState();
+            updateDashboardUI();
+
+            // Show Game Over / Calibration Modal
+            const highlightsCount = userMoves.filter(m => ['brilliant', 'great', 'best'].includes(m.gradeKey)).length;
+            document.getElementById('gameover-title').textContent = outcomeTitle;
+            document.getElementById('gameover-elo').textContent = state.userElo;
+            document.getElementById('gameover-acc').textContent = `${userAcc}%`;
+            document.getElementById('gameover-highlights').textContent = highlightsCount;
+            document.getElementById('game-over-modal').classList.remove('hidden');
+        }
+
+        function resignOrFinishGame() {
+            if (state.moveEvaluations.length === 0) {
+                showToast("Play at least a few moves first!");
+                return;
+            }
+            handleGameCompletion(true);
+        }
+
+        function finishAndReviewGame() {
+            if (state.moveEvaluations.length === 0) {
+                showToast("Play some moves first, or import a PGN in Game Review!");
+                switchTab('review');
+                return;
+            }
+            const userAcc = computeAccuracyForColor(state.moveEvaluations, state.playerColor);
+            const oppColor = state.playerColor === 'w' ? 'b' : 'w';
+            const oppAcc = computeAccuracyForColor(state.moveEvaluations, oppColor);
+
+            state.reviewGameData = {
+                title: state.isCalibrationGame
+                    ? `Calibration Match Review`
+                    : `You vs ${state.selectedBot.name} (${state.selectedBot.elo})`,
+                userColor: state.playerColor,
+                userAcc,
+                oppAcc,
+                oppElo: state.selectedBot.elo,
+                moves: [...state.moveEvaluations]
+            };
+            switchTab('review');
+        }
+
+        /* ============================================================================
+         * 13. POST-GAME REVIEW & 10-CLASSIFICATION ANALYTICS
+         * ============================================================================ */
+        function ensureSampleReviewIfEmpty() {
+            if (state.reviewGameData && state.reviewGameData.moves.length > 0) return;
+            // Create a rich sample analyzed game so Game Review works right away
+            const sampleChess = new Chess();
+            const sampleMoves = ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3', 'Nf6', 'd4', 'exd4', 'cxd4', 'Bb4+', 'Nc3', 'Nxe4', 'O-O', 'Nxc3', 'bxc3', 'Bxc3', 'Qb3', 'Bxa1'];
+            const evals = [];
+            sampleMoves.forEach((san, idx) => {
+                const fenBefore = sampleChess.fen();
+                const mv = sampleChess.move(san);
+                if (mv) {
+                    const graded = classifyMoveWithCoach(fenBefore, mv, idx + 1, state.coachStrictness);
+                    if (graded) evals.push(graded);
+                }
+            });
+            state.reviewGameData = {
+                title: "Sample Analyzed Game: Greco Gambit",
+                userColor: 'w',
+                userAcc: computeAccuracyForColor(evals, 'w'),
+                oppAcc: computeAccuracyForColor(evals, 'b'),
+                oppElo: 1400,
+                moves: evals
+            };
+        }
+
+        function renderGameReviewTab() {
+            ensureSampleReviewIfEmpty();
+            const data = state.reviewGameData;
+            document.getElementById('review-match-title').textContent = data.title;
+            document.getElementById('review-user-acc').textContent = `${data.userAcc}%`;
+            document.getElementById('review-opp-acc').textContent = `${data.oppAcc}%`;
+            document.getElementById('review-user-perf-elo').textContent = `Est. Performance: ${Math.round(600 + data.userAcc * 16)}`;
+            document.getElementById('review-opp-perf-elo').textContent = `Opponent Rating: ${data.oppElo}`;
+
+            // Render 10-Tier Classification Counts for User vs Opponent
+            const userCounts = {};
+            const oppCounts = {};
+            GRADE_ORDER.forEach(k => { userCounts[k] = 0; oppCounts[k] = 0; });
+
+            data.moves.forEach(m => {
+                if (m.color === data.userColor) userCounts[m.gradeKey] = (userCounts[m.gradeKey] || 0) + 1;
+                else oppCounts[m.gradeKey] = (oppCounts[m.gradeKey] || 0) + 1;
+            });
+
+            const rowsEl = document.getElementById('review-breakdown-rows');
+            rowsEl.innerHTML = GRADE_ORDER.map(key => {
+                const g = MOVE_GRADES[key];
+                const uCount = userCounts[key] || 0;
+                const oCount = oppCounts[key] || 0;
+                return `
+                    <div class="grid grid-cols-12 items-center bg-slate-950/90 border border-slate-800/80 rounded-xl px-3 py-1.5 text-xs">
+                        <div class="col-span-3 font-mono font-bold text-emerald-400">${uCount}</div>
+                        <div class="col-span-6 flex items-center justify-center gap-2">
+                            <span class="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black" style="background:${g.color}; color:#080d1a">${g.sym}</span>
+                            <span class="font-bold ${g.text}">${g.label}</span>
+                        </div>
+                        <div class="col-span-3 font-mono font-bold text-cyan-400 text-right">${oCount}</div>
+                    </div>
+                `;
+            }).join('');
+
+            // Render Move Log
+            const logEl = document.getElementById('review-move-log');
+            logEl.innerHTML = data.moves.map((m, idx) => {
+                const g = MOVE_GRADES[m.gradeKey];
+                const moveNumber = Math.ceil(m.ply / 2);
+                const prefix = m.color === 'w' ? `${moveNumber}.` : `${moveNumber}...`;
+                return `
+                    <div onclick="reviewStepTo(${idx + 1})" class="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 cursor-pointer flex items-center justify-between gap-2 transition">
+                        <div class="flex items-center gap-2">
+                            <span class="text-slate-500">${prefix}</span>
+                            <span class="font-bold text-white">${m.san}</span>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${g.bg} ${g.text}">${g.label} ${g.sym}</span>
+                        </div>
+                        <span class="text-[11px] text-slate-400 truncate max-w-[200px]">${m.explanation}</span>
+                    </div>
+                `;
+            }).join('');
+
+            state.reviewCurrentPly = data.moves.length;
+            renderReviewReplayBoard();
+            drawReviewEvalGraph();
+        }
+
+        function reviewStepTo(plyIndex) {
+            if (!state.reviewGameData) return;
+            const maxPly = state.reviewGameData.moves.length;
+            state.reviewCurrentPly = Math.max(0, Math.min(maxPly, plyIndex));
+            renderReviewReplayBoard();
+            drawReviewEvalGraph();
+        }
+
+        function reviewStepDelta(delta) {
+            reviewStepTo(state.reviewCurrentPly + delta);
+        }
+
+        function renderReviewReplayBoard() {
+            const container = document.getElementById('review-chessboard');
+            if (!container || !state.reviewGameData) return;
+            container.innerHTML = '';
+
+            const moves = state.reviewGameData.moves;
+            const activeEval = state.reviewCurrentPly > 0 ? moves[state.reviewCurrentPly - 1] : null;
+            const fen = activeEval ? activeEval.fenAfter : new Chess().fen();
+            const tempChess = new Chess(fen);
+            const board = tempChess.board();
+
+            document.getElementById('review-ply-indicator').textContent = `Move ${state.reviewCurrentPly} / ${moves.length}`;
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const sqName = String.fromCharCode(97 + c) + String(8 - r);
+                    const isLight = (r + c) % 2 === 0;
+                    const sqEl = document.createElement('div');
+                    sqEl.className = `square ${isLight ? 'light' : 'dark'}`;
+                    if (activeEval && (activeEval.from === sqName || activeEval.to === sqName)) {
+                        sqEl.classList.add('last-move');
+                    }
+
+                    const piece = board[r][c];
+                    if (piece) {
+                        sqEl.insertAdjacentHTML('beforeend', PIECE_SVGS[piece.color + piece.type] || '');
+                    }
+
+                    if (activeEval && activeEval.to === sqName) {
+                        const gradeMeta = MOVE_GRADES[activeEval.gradeKey];
+                        const badge = document.createElement('div');
+                        badge.className = 'move-badge-on-board';
+                        badge.style.backgroundColor = gradeMeta.color;
+                        badge.style.color = '#080d1a';
+                        badge.textContent = gradeMeta.sym;
+                        sqEl.appendChild(badge);
+                    }
+                    container.appendChild(sqEl);
+                }
+            }
+        }
+
+        function drawReviewEvalGraph() {
+            const canvas = document.getElementById('review-eval-canvas');
+            if (!canvas || !state.reviewGameData) return;
+            const ctx = canvas.getContext('2d');
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width || 500;
+            canvas.height = rect.height || 110;
+
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            // Midline (0.0 eval)
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, h / 2);
+            ctx.lineTo(w, h / 2);
+            ctx.stroke();
+
+            const moves = state.reviewGameData.moves;
+            if (!moves.length) return;
+
+            ctx.beginPath();
+            ctx.moveTo(0, h / 2);
+
+            moves.forEach((m, idx) => {
+                const x = ((idx + 1) / moves.length) * w;
+                const clamped = Math.max(-800, Math.min(800, m.cpWhiteAfter));
+                const y = (h / 2) - (clamped / 800) * (h * 0.44);
+                ctx.lineTo(x, y);
+            });
+
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+
+            // Draw dots colored by move classification
+            moves.forEach((m, idx) => {
+                const x = ((idx + 1) / moves.length) * w;
+                const clamped = Math.max(-800, Math.min(800, m.cpWhiteAfter));
+                const y = (h / 2) - (clamped / 800) * (h * 0.44);
+                ctx.fillStyle = MOVE_GRADES[m.gradeKey]?.color || '#fff';
+                ctx.beginPath();
+                ctx.arc(x, y, idx + 1 === state.reviewCurrentPly ? 5.5 : 3.2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            canvas.onclick = (e) => {
+                const bounds = canvas.getBoundingClientRect();
+                const ratio = (e.clientX - bounds.left) / bounds.width;
+                const targetPly = Math.max(1, Math.min(moves.length, Math.round(ratio * moves.length)));
+                reviewStepTo(targetPly);
+            };
+        }
+
+        function regradeCurrentReview(strictnessLevel) {
+            setCoachStrictness(strictnessLevel);
+            if (!state.reviewGameData) return;
+            state.reviewGameData.moves.forEach(item => {
+                const temp = new Chess(item.fenBefore);
+                const verbose = temp.moves({ verbose: true }).find(m => m.san === item.san);
+                if (verbose) {
+                    const regraded = classifyMoveWithCoach(item.fenBefore, verbose, item.ply, strictnessLevel);
+                    if (regraded) {
+                        item.gradeKey = regraded.gradeKey;
+                        item.explanation = regraded.explanation;
+                    }
+                }
+            });
+            state.reviewGameData.userAcc = computeAccuracyForColor(state.reviewGameData.moves, state.reviewGameData.userColor);
+            const oppColor = state.reviewGameData.userColor === 'w' ? 'b' : 'w';
+            state.reviewGameData.oppAcc = computeAccuracyForColor(state.reviewGameData.moves, oppColor);
+            renderGameReviewTab();
+        }
+
+        function openPGNImportModal() {
+            document.getElementById('pgn-import-modal').classList.remove('hidden');
+        }
+
+        function analyzeImportedPGN() {
+            const raw = document.getElementById('pgn-textarea').value.trim();
+            if (!raw) return;
+            const temp = new Chess();
+            const ok = temp.load_pgn(raw);
+            if (!ok) {
+                showToast("Invalid PGN format. Check move notation.");
+                return;
+            }
+            const history = temp.history();
+            const replay = new Chess();
+            const evals = [];
+            history.forEach((san, idx) => {
+                const fenBefore = replay.fen();
+                const mv = replay.move(san);
+                if (mv) {
+                    const graded = classifyMoveWithCoach(fenBefore, mv, idx + 1, state.coachStrictness);
+                    if (graded) evals.push(graded);
+                }
+            });
+            state.reviewGameData = {
+                title: "Imported PGN Deep Review",
+                userColor: 'w',
+                userAcc: computeAccuracyForColor(evals, 'w'),
+                oppAcc: computeAccuracyForColor(evals, 'b'),
+                oppElo: 1500,
+                moves: evals
+            };
+            closeModal('pgn-import-modal');
+            renderGameReviewTab();
+            showToast("PGN Analyzed with 10-Tier Move Grading!");
+        }
+
+        function exportCurrentPGN() {
+            const pgn = state.chess.pgn() || "No moves played yet.";
+            const tempInput = document.createElement('textarea');
+            tempInput.value = pgn;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            showToast("PGN copied to clipboard!");
+        }
+
+        /* ============================================================================
+         * 14. TACTICAL PUZZLE GENERATOR & SOLVER
+         * ============================================================================ */
+        let puzzleIndexCounter = 0;
+
+        function loadNextPuzzle(announce = false) {
+            const basePuzzle = PUZZLE_BANK[puzzleIndexCounter % PUZZLE_BANK.length];
+            puzzleIndexCounter++;
+
+            state.currentPuzzle = {
+                ...basePuzzle,
+                id: basePuzzle.id + puzzleIndexCounter * 7,
+                rating: basePuzzle.rating + ((puzzleIndexCounter * 23) % 120) - 40
+            };
+
+            state.puzzleChess = new Chess(state.currentPuzzle.fen);
+            state.puzzleSelectedSquare = null;
+            state.puzzleLegalMoves = [];
+
+            document.getElementById('puzzle-title').textContent = `Tactical Puzzle #${state.currentPuzzle.id}: ${state.currentPuzzle.title}`;
+            document.getElementById('puzzle-theme-badge').textContent = `Theme: ${state.currentPuzzle.theme}`;
+            document.getElementById('puzzle-difficulty-elo').textContent = state.currentPuzzle.rating;
+            document.getElementById('puzzle-status-text').textContent = state.currentPuzzle.prompt;
+            document.getElementById('puzzle-user-rating').textContent = state.puzzleRating;
+            document.getElementById('puzzle-streak-counter').textContent = `🔥 ${state.puzzleStreak}`;
+
+            renderPuzzleBoard();
+            if (announce) showToast(`Generated Puzzle #${state.currentPuzzle.id}`);
+        }
+
+        function renderPuzzleBoard(highlightHintSq = null) {
+            const container = document.getElementById('puzzle-chessboard');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const board = state.puzzleChess.board();
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const sqName = String.fromCharCode(97 + c) + String(8 - r);
+                    const isLight = (r + c) % 2 === 0;
+                    const sqEl = document.createElement('div');
+                    sqEl.className = `square ${isLight ? 'light' : 'dark'}`;
+                    if (state.puzzleSelectedSquare === sqName) sqEl.classList.add('selected');
+                    if (highlightHintSq === sqName) sqEl.classList.add('hint-square');
+
+                    const piece = board[r][c];
+                    if (piece) {
+                        sqEl.insertAdjacentHTML('beforeend', PIECE_SVGS[piece.color + piece.type] || '');
+                    }
+
+                    const legalMatch = state.puzzleLegalMoves.find(m => m.to === sqName);
+                    if (legalMatch) {
+                        const dot = document.createElement('div');
+                        dot.className = legalMatch.captured ? 'legal-capture' : 'legal-dot';
+                        sqEl.appendChild(dot);
+                    }
+
+                    sqEl.addEventListener('click', () => onPuzzleSquareClick(sqName));
+                    container.appendChild(sqEl);
+                }
+            }
+        }
+
+        function onPuzzleSquareClick(sqName) {
+            if (!state.currentPuzzle) return;
+            const matching = state.puzzleLegalMoves.find(m => m.to === sqName);
+            if (state.puzzleSelectedSquare && matching) {
+                const fenBefore = state.puzzleChess.fen();
+                const ranked = analyzeAllMovesForPosition(fenBefore, 2);
+                const mv = state.puzzleChess.move({ from: state.puzzleSelectedSquare, to: sqName, promotion: 'q' });
+                state.puzzleSelectedSquare = null;
+                state.puzzleLegalMoves = [];
+
+                const expectedSan = state.currentPuzzle.solution[0];
+                const isBestEngineMove = ranked.length && ranked[0].san === mv.san;
+
+                if (mv.san === expectedSan || isBestEngineMove || state.puzzleChess.in_checkmate()) {
+                    playChessSound('brilliant');
+                    state.puzzleStreak++;
+                    state.puzzleRating += 14;
+                    document.getElementById('puzzle-status-text').innerHTML = `<span class="text-emerald-400 font-bold">Brilliant Solution (${mv.san})! +14 Puzzle Rating!</span>`;
+                    document.getElementById('puzzle-user-rating').textContent = state.puzzleRating;
+                    document.getElementById('puzzle-streak-counter').textContent = `🔥 ${state.puzzleStreak}`;
+                    saveProfileState();
+                    updateDashboardUI();
+                } else {
+                    playChessSound('blunder');
+                    state.puzzleChess.undo();
+                    state.puzzleStreak = 0;
+                    state.puzzleRating = Math.max(400, state.puzzleRating - 8);
+                    document.getElementById('puzzle-status-text').innerHTML = `<span class="text-rose-400 font-bold">${mv.san} is not the sharpest tactic. Try again!</span>`;
+                    document.getElementById('puzzle-user-rating').textContent = state.puzzleRating;
+                    document.getElementById('puzzle-streak-counter').textContent = `🔥 0`;
+                }
+                renderPuzzleBoard();
+                return;
+            }
+
+            const piece = state.puzzleChess.get(sqName);
+            if (piece && piece.color === state.puzzleChess.turn()) {
+                state.puzzleSelectedSquare = sqName;
+                state.puzzleLegalMoves = state.puzzleChess.moves({ square: sqName, verbose: true });
+                renderPuzzleBoard();
+            } else {
+                state.puzzleSelectedSquare = null;
+                state.puzzleLegalMoves = [];
+                renderPuzzleBoard();
+            }
+        }
+
+        function showPuzzleHint() {
+            if (!state.currentPuzzle) return;
+            const moves = state.puzzleChess.moves({ verbose: true });
+            const solMove = moves.find(m => m.san === state.currentPuzzle.solution[0]) || moves[0];
+            if (solMove) {
+                renderPuzzleBoard(solMove.from);
+                showToast(`Hint: Look closely at the piece on ${solMove.from}`);
+            }
+        }
+
+        function revealPuzzleSolution() {
+            if (!state.currentPuzzle) return;
+            document.getElementById('puzzle-status-text').innerHTML = `Solution Move: <strong class="text-amber-400 font-mono">${state.currentPuzzle.solution.join(' ')}</strong>`;
+        }
+
+        /* ============================================================================
+         * 15. 50 BOTS DIRECTORY, DASHBOARD, & MATCH LAUNCHERS
+         * ============================================================================ */
+        function renderBotsGrid(tierFilter = 'all') {
+            const grid = document.getElementById('bots-grid');
+            if (!grid) return;
+
+            document.querySelectorAll('.bot-filter-btn').forEach(btn => {
+                const active = btn.dataset.tier === tierFilter;
+                btn.className = active
+                    ? 'bot-filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-500 text-slate-950'
+                    : 'bot-filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-slate-300 hover:text-white';
+            });
+
+            const filtered = tierFilter === 'all' ? BOTS_DATA : BOTS_DATA.filter(b => b.tier === tierFilter);
+            grid.innerHTML = filtered.map(bot => {
+                const beaten = state.beatenBotIds.has(bot.id);
+                return `
+                    <div class="bg-slate-900 border ${beaten ? 'border-emerald-500/50' : 'border-slate-800'} rounded-2xl p-4 flex flex-col justify-between hover:border-emerald-500/60 transition group">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <div class="w-12 h-12 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center text-2xl">
+                                    ${bot.icon}
+                                </div>
+                                <div class="text-right">
+                                    <span class="px-2 py-0.5 rounded-lg text-xs font-mono font-extrabold bg-slate-950 text-emerald-400 border border-slate-800">${bot.elo}</span>
+                                    <span class="block text-[10px] text-slate-400 mt-1">${bot.tier}</span>
+                                </div>
+                            </div>
+                            <h4 class="font-bold text-white text-sm mt-3 flex items-center gap-1.5">
+                                <span>${bot.name}</span>
+                                ${beaten ? '<i class="fa-solid fa-circle-check text-emerald-400 text-xs" title="Defeated"></i>' : ''}
+                            </h4>
+                            <span class="inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 text-cyan-300 mt-1">${bot.style}</span>
+                            <p class="text-xs text-slate-400 italic mt-2 line-clamp-2">"${bot.quote}"</p>
+                        </div>
+                        <button onclick="selectBotAndPlay(${bot.id})" class="mt-4 w-full py-2 rounded-xl bg-slate-800 group-hover:bg-emerald-500 text-slate-200 group-hover:text-slate-950 font-bold text-xs transition flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-chess-knight"></i> Challenge Bot
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function filterBots(tier) {
+            renderBotsGrid(tier);
+        }
+
+        function selectBotAndPlay(botId) {
+            const bot = BOTS_DATA.find(b => b.id === botId) || BOTS_DATA[20];
+            state.selectedBot = bot;
+            state.isCalibrationGame = false;
+            startNewMatchWithCurrentSettings();
+            switchTab('play');
+        }
+
+        function startQuickBotMatch() {
+            // Find bot closest to user's current Elo
+            let closest = BOTS_DATA[0];
+            let minDiff = 99999;
+            BOTS_DATA.forEach(b => {
+                const d = Math.abs(b.elo - state.userElo);
+                if (d < minDiff) { minDiff = d; closest = b; }
+            });
+            state.selectedBot = closest;
+            state.isCalibrationGame = false;
+            startNewMatchWithCurrentSettings();
+            switchTab('play');
+            showToast(`Matched vs ${closest.name} (${closest.elo} Elo)`);
+        }
+
+        function startCalibrationGame() {
+            state.isCalibrationGame = true;
+            state.calibrationDynamicElo = state.userElo || 1200;
+            state.playerColor = 'w';
+            state.boardFlipped = false;
+            startNewMatchWithCurrentSettings();
+            switchTab('play');
+            showToast("1-Game Dynamic Elo Calibration Started!");
+        }
+
+        function startNewMatchWithCurrentSettings() {
+            state.chess = new Chess();
+            state.selectedSquare = null;
+            state.legalMovesForSelected = [];
+            state.lastMoveSquares = [];
+            state.hintSquares = [];
+            state.moveEvaluations = [];
+
+            // Configure opponent header
+            if (state.isCalibrationGame) {
+                document.getElementById('opponent-avatar').textContent = '🧭';
+                document.getElementById('opponent-name').textContent = 'Adaptive Calibration Bot';
+                document.getElementById('opponent-elo-badge').textContent = `~${state.calibrationDynamicElo}`;
+                document.getElementById('opponent-style-badge').textContent = 'Dynamic Resistance';
+                document.getElementById('opponent-chat-bubble').textContent = '"Play your sharpest chess! I adapt my Elo after every move you make."';
+                document.getElementById('calibration-live-pill').classList.remove('hidden');
+            } else {
+                const bot = state.selectedBot;
+                document.getElementById('opponent-avatar').textContent = bot.icon;
+                document.getElementById('opponent-name').textContent = bot.name;
+                document.getElementById('opponent-elo-badge').textContent = bot.elo;
+                document.getElementById('opponent-style-badge').textContent = bot.style;
+                document.getElementById('opponent-chat-bubble').textContent = `"${bot.quote}"`;
+                document.getElementById('calibration-live-pill').classList.add('hidden');
+            }
+
+            document.getElementById('play-user-elo').textContent = state.userElo;
+            document.getElementById('opening-name-display').textContent = 'Starting Position';
+
+            renderMainBoard();
+            updateEvaluationBar(0);
+            updateLiveGradeCounters();
+            updateMoveHistoryUI();
+
+            if (state.playerColor === 'b') {
+                setTimeout(chooseBotMove, 300);
+            }
+        }
+
+        function updateDashboardUI() {
+            document.getElementById('header-user-elo').textContent = state.userElo;
+            document.getElementById('dash-elo-val').textContent = state.userElo;
+            document.getElementById('dash-puzzle-val').textContent = state.puzzleRating;
+            document.getElementById('dash-puzzle-streak').textContent = `Streak: ${state.puzzleStreak}`;
+            document.getElementById('dash-games-count').textContent = state.recentGames.length;
+            document.getElementById('dash-bots-beaten').textContent = `${state.beatenBotIds.size} / 50`;
+
+            const calBadge = document.getElementById('dash-calibration-badge');
+            if (state.calibrated) {
+                calBadge.textContent = "Calibrated ✓";
+                calBadge.className = "px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30";
+            }
+
+            // Lifetime 10 Move Classifications Grid on Dashboard
+            const grid = document.getElementById('dash-classifications-grid');
+            if (grid) {
+                grid.innerHTML = GRADE_ORDER.map(key => {
+                    const g = MOVE_GRADES[key];
+                    const count = state.lifetimeGrades[key] || 0;
+                    return `
+                        <div class="p-3 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center justify-between">
+                            <div>
+                                <span class="text-xs font-bold ${g.text} block">${g.label}</span>
+                                <span class="text-lg font-black font-mono text-white">${count}</span>
+                            </div>
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs" style="background:${g.color}; color:#080d1a">
+                                ${g.sym}
+                            </span>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            // Recent matches list
+            const recContainer = document.getElementById('dash-recent-games');
+            if (recContainer) {
+                recContainer.innerHTML = state.recentGames.map(item => `
+                    <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+                        <div>
+                            <div class="font-bold text-white">${item.opponent}</div>
+                            <div class="text-[11px] text-slate-400">${item.movesCount} moves • ${item.date}</div>
+                        </div>
+                        <div class="text-right">
+                            <span class="font-bold ${item.result === 'Win' ? 'text-emerald-400' : 'text-amber-400'}">${item.result}</span>
+                            <div class="font-mono text-[11px] text-slate-300">Acc: ${item.accuracy}</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        /* ============================================================================
+         * 16. NAVIGATION, MODALS, & INITIALIZATION
+         * ============================================================================ */
+        function switchTab(tabName) {
+            const tabs = ['dashboard', 'play', 'bots', 'calibration', 'puzzles', 'review'];
+            tabs.forEach(t => {
+                const sec = document.getElementById(`tab-${t}`);
+                const btn = document.getElementById(`nav-${t}`);
+                if (sec) sec.classList.toggle('hidden', t !== tabName);
+                if (btn) {
+                    btn.className = t === tabName
+                        ? 'nav-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-2 bg-emerald-500 text-slate-950'
+                        : 'nav-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-2 text-slate-300 hover:text-white';
+                }
+            });
+
+            if (tabName === 'play') renderMainBoard();
+            if (tabName === 'bots') renderBotsGrid('all');
+            if (tabName === 'puzzles') {
+                if (!state.currentPuzzle) loadNextPuzzle(false);
+                else renderPuzzleBoard();
+            }
+            if (tabName === 'review') renderGameReviewTab();
+            if (tabName === 'dashboard') updateDashboardUI();
+        }
+
+        function setBoardTheme(theme) {
+            document.body.setAttribute('data-board-theme', theme);
+            showToast(`Board theme set to ${theme}`);
+        }
+
+        function openNewGameModal() {
+            const sel = document.getElementById('modal-bot-select');
+            sel.innerHTML = BOTS_DATA.map(b => `<option value="${b.id}" ${b.id === state.selectedBot.id ? 'selected' : ''}>${b.icon} ${b.name} (${b.elo} Elo - ${b.tier})</option>`).join('');
+            document.getElementById('new-game-modal').classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function selectModalColor(c) {
+            state.modalSelectedColor = c;
+            ['w', 'random', 'b'].forEach(k => {
+                const btn = document.getElementById(`color-btn-${k}`);
+                btn.className = k === c
+                    ? 'py-2 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs'
+                    : 'py-2 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs';
+            });
+        }
+
+        function confirmStartConfiguredGame() {
+            const botId = Number(document.getElementById('modal-bot-select').value);
+            state.selectedBot = BOTS_DATA.find(b => b.id === botId) || BOTS_DATA[20];
+            const strictVal = document.getElementById('modal-strictness-select').value;
+            setCoachStrictness(strictVal);
+
+            if (state.modalSelectedColor === 'random') {
+                state.playerColor = Math.random() < 0.5 ? 'w' : 'b';
+            } else {
+                state.playerColor = state.modalSelectedColor;
+            }
+            state.boardFlipped = state.playerColor === 'b';
+            state.isCalibrationGame = false;
+
+            closeModal('new-game-modal');
+            startNewMatchWithCurrentSettings();
+            switchTab('play');
+        }
+
+        function showToast(msg) {
+            const box = document.getElementById('toast-box');
+            document.getElementById('toast-message').textContent = msg;
+            box.classList.remove('hidden');
+            clearTimeout(window._toastTimer);
+            window._toastTimer = setTimeout(() => box.classList.add('hidden'), 2800);
+        }
+
+        window.onload = function() {
+            loadSavedState();
+            initStockfishEngine();
+            updateDashboardUI();
+            startNewMatchWithCurrentSettings();
+            loadNextPuzzle(false);
+        };
+    </script>
+</body>
+</html>
